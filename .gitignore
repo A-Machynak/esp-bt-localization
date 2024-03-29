@@ -1,0 +1,11 @@
+sdkconfig
+sdkconfig.old
+dependencies.lock
+
+.vscode/
+.devcontainer/
+build/
+managed_components/
+
+web/compressed.h
+web/visualize.min.*

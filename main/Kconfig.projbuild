@@ -1,0 +1,55 @@
+
+menu "ESP Localization"
+choice MASTER_OR_SCANNER
+    prompt "Select Master or Scanner"
+    default MASTER
+
+config MASTER
+    bool "Device acts as a Master"
+config SCANNER
+    bool "Device acts as a Scanner"
+endchoice
+
+choice WIFI_AP_OR_STA
+    depends on MASTER
+    prompt "Create wifi AP or connect to an existing one (STA)"
+    default WIFI_AS_STA
+
+config WIFI_AS_AP
+    depends on MASTER
+    bool "Create new wifi network"
+config WIFI_AS_STA
+    depends on MASTER
+    bool "Connect to an existing one"
+endchoice
+
+config WIFI_SSID
+    depends on MASTER
+    string "WiFi SSID"
+    default "esp-wifi"
+    help
+        SSID (network name)
+
+config WIFI_PASSWORD
+    depends on MASTER
+    string "WiFi Password"
+    default "mypassword"
+    help
+        WiFi password (WPA/WPA2)
+
+config WIFI_CHANNEL
+    depends on WIFI_AS_AP
+    int "WiFi Channel"
+    range 1 13
+    default 1
+    help
+        WiFi channel (network channel)
+
+config WIFI_MAX_CONNECTIONS
+    depends on WIFI_AS_AP
+    int "WiFi Max Connectioons"
+    range 1 32
+    default 3
+    help
+        Maximum allowed connections
+endmenu

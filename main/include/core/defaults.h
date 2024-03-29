@@ -1,0 +1,7 @@
+#pragma once
+
+#ifndef MASTER_MAX_SCANNER_CONNECTIONS
+#define MASTER_MAX_SCANNER_CONNECTIONS 32
+#endif
+
+

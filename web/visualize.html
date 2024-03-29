@@ -1,0 +1,21 @@
+<!doctype html>
+<html>
+
+<!-- This file shall be minified, potentially compressed and saved as a string to be returned by Master device for the index page. -->
+
+<head>
+	<title>ESP Bluetooth Localization</title>
+</head>
+
+<body style="margin:0;padding:0">
+	<div style="position:relative;height: 800px;">
+		<!-- We'll just put the canvas at 0,0 and assume that the canvas starts here from hereafter -->
+		<canvas style="position:absolute" id="canvas-static" width="1000" height="800"></canvas>
+		<canvas style="position:absolute" id="canvas-entities" width="1000" height="800"></canvas>
+		<canvas style="position:absolute" id="canvas-dynamic" width="1000" height="800"></canvas>
+	</div>
+	<textarea id="textarea" rows="7" cols="75" readonly></textarea>
+	<!-- JS will be embedded by the python script -->
+</body>
+
+</html>

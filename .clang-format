@@ -1,0 +1,31 @@
+BasedOnStyle: LLVM
+Language: Cpp
+IndentWidth: 4
+TabWidth: 4
+UseTab: ForIndentation
+AccessModifierOffset: -4
+AlignConsecutiveAssignments: false
+AllowAllParametersOfDeclarationOnNextLine: true
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+AlwaysBreakTemplateDeclarations: true
+BinPackParameters: false
+Cpp11BracedListStyle: true
+BreakBeforeInheritanceComma: true
+BreakConstructorInitializers: BeforeComma
+BreakBeforeBinaryOperators: NonAssignment
+SpaceBeforeAssignmentOperators: true
+SpacesBeforeTrailingComments: 2
+PointerAlignment: Middle
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterEnum: true
+  AfterFunction: true
+  AfterNamespace: true
+  AfterStruct: true
+  AfterClass: true
+  BeforeCatch: true
+  BeforeElse: true
+ColumnLimit: 100
+CommentPragmas: "[|]"
