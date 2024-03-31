@@ -4,6 +4,8 @@ Bluetooth localization based on ESP using RSSI and multilateration techniques an
 A single Master device with multiple connected Scanners are used to passively scan for advertising
 devices and approximate their positions.
 
+This project was developed as part of a bachelor's thesis "Bluetooth Based Localization" at [BUT FIT](https://www.fit.vut.cz/.en).
+
 ### The principle
 
 A "Scanner" is a device, which waits for an incoming `GATT` connection. Upon connecting, it passively scans
@@ -35,6 +37,13 @@ For Wifi, either AP (creates an access point) or STA (connects to an existing on
 - For a Master: ESP32 capable of BLE+WiFi
 - 4MB Flash
 
+### Compatible devices
+
+The project has been tested on the following devices:
+
+- ESP32-WROOM32 - Master, Scanner (BT+BLE)
+- ESP32-C3(-MINI-1) - Master, Scanner (BLE)
+
 ## Configuration
 
 KConfig (`main/Kconfig.projbuild`) is used for configuration.
@@ -42,20 +51,16 @@ Use idf `menuconfig` command or edit `sdkconfig.*` to configure it.
 
 ## Build, Configure & Flash
 
-Note: Don't forget to do a full clean after changing `sdkconfig` values.
-
 Master
 ```
-idf.py -B build/master -D SDKCONFIG_DEFAULTS="sdkconfig.master" build
-idf.py -B build/master menuconfig
-idf.py -B build/master flash monitor
+idf.py -B build/master -D SDKCONFIG_DEFAULTS="sdkconfig.master" menuconfig
+idf.py -B build/master -D SDKCONFIG_DEFAULTS="sdkconfig.master" build flash monitor
 ```
 
 Scanner
 ```
-idf.py -B build/scanner -D SDKCONFIG_DEFAULTS="sdkconfig.scanner" build
-idf.py -B build/scanner menuconfig
-idf.py -B build/scanner flash monitor
+idf.py -B build/scanner -D SDKCONFIG_DEFAULTS="sdkconfig.scanner" menuconfig
+idf.py -B build/scanner -D SDKCONFIG_DEFAULTS="sdkconfig.scanner" build flash monitor
 ```
 
 ## Implementation notes
@@ -78,7 +83,9 @@ google-closure-compiler -O ADVANCED --js web/visualize.js --js_output_file web/v
 html-minifier --collapse-whitespace --remove-comments --remove-optional-tags --remove-redundant-attributes --remove-script-type-attributes --remove-tag-whitespace web/visualize.html -o web/visualize.min.html
 ```
 
-After that, run the `web/zip.py` to embed the js into html (inserted before `</body>`), compress it and output into `compressed.h`. Finally, copy the file's content into `index_page.h`.
+After that, run the `web/zip.py` to embed the js into html (inserted before `</body>`), compress it and output into `compressed.h`.
+Alternatively, the python script can be used to run the minifiers automatically and compress everything at once (`-a` flag).
+Finally, copy the file's content into `index_page.h`.
 
 The file doesn't need to be minified and can be simply compressed:
 ```sh
@@ -89,12 +96,13 @@ python zip.py visualize.html visualize.js
 <hr>
 
 Custom visualization can be made using the `/api/devices` endpoint.
-This endpoint returns an array of elements with 19 bytes per element with the following format (`type:name[size]`):
+This endpoint returns an array of elements with 20 bytes per element with the following format (`type:name[size]`):
 
-`uint8:BDA[6]` `float:xyz[3]` `uint8:flags[1]`
+`uint8:BDA[6]` `float:xyz[3]` `uint8:scannerCount[1]` `uint8:flags[1]`
 
 ... assuming `float` is 4 bytes.
-Only the first 3 (lowest) bits in `flags` are used and they represent the following:
+`scannerCount` represents the amount of scanner measurements that were used to approximate this device's position.
+For `flags`, only the first 3 (lowest) bits are used and they represent the following:
 
 |Bit|Info|
 |---|----|
@@ -111,4 +119,5 @@ Only the first 3 (lowest) bits in `flags` are used and they represent the follow
 <hr>
 
 - Not having much experience with embedded development/ESP-IDF/Bluetooth and time constraints led to some dubious design choices - unfinished wrappers over C API, improper SRP, ...
+- Some classes are initialized with `Init()` method instead of a constructor. This is to allow these classes to be static - if, for example, a class initializes Bluetooth Controller in its constructor, it cannot be statically initialized.
 - `ToString()` methods convert to `const char *` when possible

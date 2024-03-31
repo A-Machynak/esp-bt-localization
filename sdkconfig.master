@@ -10,6 +10,9 @@ CONFIG_WIFI_PASSWORD="espwifi0"
 # CONFIG_WIFI_PASSWORD="password"
 CONFIG_WIFI_CHANNEL=1
 
+# Target
+# CONFIG_IDF_TARGET=esp32c3
+
 # C++
 CONFIG_COMPILER_CXX_EXCEPTIONS=y
 
@@ -17,15 +20,12 @@ CONFIG_COMPILER_CXX_EXCEPTIONS=y
 CONFIG_BT_ENABLED=y
 CONFIG_BT_BLE_ENABLED=y
 CONFIG_BLUEDROID_ENABLED=y
-# CONFIG_BT_CLASSIC_ENABLED=y # Disable - not used
+CONFIG_BTC_TASK_STACK_SIZE=8192
 
 CONFIG_BT_GATTC_ENABLE=y
 
-# CONFIG_BT_GATTS_ENABLE=y
-# CONFIG_BT_BLE_50_FEATURES_SUPPORTED=y # Should be enabled by default if supported
-# CONFIG_BT_BLE_42_FEATURES_SUPPORTED=y # Should be enabled by default if supported
-# CONFIG_BTDM_CTRL_MODE_BTDM=y # BLE only
-# CONFIG_BTDM_BLE_SCAN_DUPL=y  # BLE only
+CONFIG_BT_BLE_50_FEATURES_SUPPORTED=y  # Might throw undefined reference to esp_ble_X if not defined for some targets
+CONFIG_BT_BLE_42_FEATURES_SUPPORTED=y  # Might throw undefined reference to esp_ble_X if not defined for some targets
 
 CONFIG_BTDM_CTRL_MODE_BLE_ONLY=y # BLE only
 CONFIG_BLE_SCAN_DUPLICATE=y

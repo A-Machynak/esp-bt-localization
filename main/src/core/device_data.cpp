@@ -12,7 +12,7 @@ DeviceData::DeviceData(std::span<const std::uint8_t> data)
 
 DeviceData::DeviceData(std::span<const std::uint8_t, 6> mac,
                        std::int8_t rssi,
-                       std::uint8_t flags,
+                       FlagMask flags,
                        esp_ble_evt_type_t eventType,
                        std::span<const std::uint8_t> advData)
     : Data({})
@@ -94,5 +94,25 @@ bool DeviceDataView::IsAddrTypePublic() const
 bool DeviceDataView::IsBle() const
 {
 	return Span[FlagsIdx] & FlagMask::IsBle;
+}
+
+DeviceDataView::Array::Array(std::span<std::uint8_t> data)
+    : Span(data)
+    , Size(data.size() / DeviceDataView::Size)
+{
+}
+
+DeviceDataView DeviceDataView::Array::operator[](std::size_t i)
+{
+	assert(i < Size);
+	return DeviceDataView(std::span<std::uint8_t, DeviceDataView::Size>(
+	    &Span[i * DeviceDataView::Size], DeviceDataView::Size));
+}
+
+DeviceDataView DeviceDataView::Array::operator[](std::size_t i) const
+{
+	assert(i < Size);
+	return DeviceDataView(std::span<std::uint8_t, DeviceDataView::Size>(
+	    &Span[i * DeviceDataView::Size], DeviceDataView::Size));
 }
 }  // namespace Core

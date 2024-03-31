@@ -1,13 +1,13 @@
 
 #include "core/wrapper/gap_ble_wrapper.h"
 
-#include <sdkconfig.h>
 #include <esp_log.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/FreeRTOSConfig.h>
 #include <freertos/projdefs.h>
 #include <freertos/task.h>
 #include <freertos/timers.h>
+#include <sdkconfig.h>
 
 #include <esp_log.h>
 
@@ -21,7 +21,7 @@ static Gap::Ble::Wrapper * _Wrapper;
 
 static void GapCallbackPassthrough(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t * param)
 {
-	//ESP_LOGI(TAG, "%s", ToString(event));
+	ESP_LOGV(TAG, "%s", ToString(event));
 	_Wrapper->BleGapCallback(event, param);
 }
 
@@ -115,12 +115,13 @@ void Wrapper::SetScanParams(esp_ble_scan_params_t * params)
 void Wrapper::StartScanning(float time)
 {
 	if (_isScanning) {
+		ESP_LOGI(TAG, "Already scanning");
 		return;
 	}
 
 	_scanForever = (time == ScanForever);
 	time = std::clamp(time, 0.f, (float)std::numeric_limits<std::uint32_t>::max());
-	esp_ble_gap_start_scanning(static_cast<std::uint32_t>(time));
+	ESP_ERROR_CHECK(esp_ble_gap_start_scanning(static_cast<std::uint32_t>(time)));
 	ESP_LOGI(TAG, "Scanning started");
 	_isScanning = true;
 }
@@ -128,13 +129,14 @@ void Wrapper::StartScanning(float time)
 void Wrapper::StopScanning()
 {
 	if (!_isScanning) {
+		ESP_LOGI(TAG, "Already not scanning");
 		return;
 	}
 	_scanForever = false;
 	_firstScanMessage = true;
-	esp_ble_gap_stop_scanning();
-	ESP_LOGI(TAG, "Scanning stopped");
 	_isScanning = false;
+	ESP_ERROR_CHECK(esp_ble_gap_stop_scanning());
+	ESP_LOGI(TAG, "Scanning stopped");
 }
 
 void Wrapper::BleGapCallback(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t * param)
@@ -153,9 +155,16 @@ void Wrapper::BleGapCallback(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_
 	case ESP_GAP_BLE_SCAN_PARAM_SET_COMPLETE_EVT:
 		_callback->GapBleScanParamCmpl(param->scan_param_cmpl);
 		break;
-	case ESP_GAP_BLE_SCAN_RESULT_EVT:
+	case ESP_GAP_BLE_SCAN_RESULT_EVT: {
+		const auto e = param->scan_rst.search_evt;
+		if (e == esp_gap_search_evt_t::ESP_GAP_SEARCH_INQ_CMPL_EVT
+		    || e == esp_gap_search_evt_t::ESP_GAP_SEARCH_DISC_CMPL_EVT
+		    || e == esp_gap_search_evt_t::ESP_GAP_SEARCH_DI_DISC_CMPL_EVT) {
+			_isScanning = false;  // ??? Why not SCAN_STOP event?
+		}
 		_callback->GapBleScanResult(param->scan_rst);
 		break;
+	}
 	case ESP_GAP_BLE_ADV_DATA_RAW_SET_COMPLETE_EVT:
 		_callback->GapBleAdvDataRawCmpl(param->adv_data_raw_cmpl);
 		break;
@@ -166,6 +175,7 @@ void Wrapper::BleGapCallback(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_
 		_callback->GapBleAdvStartCmpl(param->adv_start_cmpl);
 		break;
 	case ESP_GAP_BLE_SCAN_START_COMPLETE_EVT:
+		_isScanning = true;
 		if (_scanForever && _firstScanMessage) {  // send only the first callback
 			_firstScanMessage = false;
 			_callback->GapBleScanStartCmpl(param->scan_start_cmpl);
@@ -175,6 +185,7 @@ void Wrapper::BleGapCallback(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_
 		_callback->GapBleAdvStopCmpl(param->adv_stop_cmpl);
 		break;
 	case ESP_GAP_BLE_SCAN_STOP_COMPLETE_EVT:
+		_isScanning = false;
 		if (_scanForever) {
 			StartScanning(ScanForever);
 		}

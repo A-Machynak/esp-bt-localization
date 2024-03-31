@@ -9,8 +9,9 @@ const canvasDynamicCtx = canvasDynamic.getContext("2d");
 const boardWidth = 800; const boardHeight = 800;
 const unitSquare = 25;
 
+// Array of dict (Scanners/Devices) { Bda, X, Y, Z, IsScanner, IsBle, IsAddrTypePublic }
+let entities = [];
 let mouseX = 0, mouseY = 0;
-let entities = []; // Array of dict { Bda, X, Y, Z, IsScanner, IsBle, IsAddrTypePublic }
 
 window.addEventListener("load", Init);
 
@@ -40,22 +41,16 @@ function UpdateEntities() {
 	// { Bda, X, Y, Z, IsScanner, IsBle, IsAddrTypePublic }
 	for (var e of entities) {
 		// Append to textarea
-		textarea.value += (e.IsScanner ?
-			`Scanner [${BdaToString(e.Bda)}]: (${e.X}, ${e.Y}, ${e.Z})` :
-			`Device [${BdaToString(e.Bda)}]: (${e.X}, ${e.Y}, ${e.Z}), ` +
-			`(${e.IsBle ? "BLE" : "BT"}, ${e.IsAddrTypePublic ? "Public" : "Random"})`)
-			+ "\n";
+		textarea.value += EntityToString(e);
 
 		const realCoord = ToCanvasCoordinates(e.X, e.Y);
 		const realX = realCoord[0];
 		const realY = realCoord[1];
 		if (e.IsScanner) {
-			DrawCircle(ctx, realX, realY, 5,
-				`rgb(255, 165, ${Math.floor(Clamp(e.Z * 12, 0, 128))})`);
+			DrawScanner(ctx, realX, realY, e.Z);
 		}
 		else {
-			DrawCircle(ctx, realX, realY, 5,
-				`rgb(0, 165, ${Math.floor(Clamp(e.Z * 12, 0, 128))})`);
+			DrawDevice(ctx, realX, realY, e.Z);
 		}
 	}
 }
@@ -89,50 +84,72 @@ function GetData() {
 		if (xhr.readyState == 4 && xhr.status == 200) {
 			ParseRawData(xhr.response);
 		}
-		else if (xhr.status != 200) {
-			console.log("Warning - XHR Status " + xhr.status);
-		}
 	};
 	xhr.open("GET", "/api/devices");
 	xhr.responseType = "arraybuffer";
 	xhr.send();
 }
 
-// Parse raw device data into `entities`. Expects an array of 19B/element
+// Parse raw device data into `entities`. Expects an array of 20B/element
 function ParseRawData(rawData) {
 	entities.length = 0;
 
-	// 6B BDA, 3*4B (x,y,z), 1B Flags
-	const singleElement = 19;
+	// 6B BDA, 3*4B (x,y,z), 1B ScannerCount, 1B Flags
+	const singleElement = 20;
 	const total = rawData.byteLength / singleElement;
 
-	const bdaOffset = 6;
-	const xyzOffset = bdaOffset + 3 * 4;
+	// Start indices
+	const bdaIdx = 0;
+	const xyzIdx = 6;
+	const sCountIdx = 18;
+	const flagsIdx = 19;
 
 	var offset = 0;
 	for (var i = 0; i < total; i++) {
 		var view = new DataView(rawData, offset, singleElement);
 
 		var bda = [];
-		for (var j = 0; j < 6; j++) {
+		for (var j = bdaIdx; j < bdaIdx+6; j++) {
 			bda.push(view.getUint8(j));
 		}
-		var x = view.getFloat32(bdaOffset, true);
-		var y = view.getFloat32(bdaOffset + 4, true);
-		var z = view.getFloat32(bdaOffset + 8, true);
-		var flag = view.getUint8(xyzOffset);
+		var x = view.getFloat32(xyzIdx, true);
+		var y = view.getFloat32(xyzIdx + 4, true);
+		var z = view.getFloat32(xyzIdx + 8, true);
+		var sCount = view.getUint8(sCountIdx);
+		var flags = view.getUint8(flagsIdx);
 
 		entities.push({
 			Bda: bda, X: x, Y: y, Z: z,
-			IsScanner: ((flag & 0b00000001) != 0),
-			IsBle: ((flag & 0b00000010) != 0),
-			IsAddrTypePublic: ((flag & 0b00000100) != 0)
+			ScannerCount: sCount,
+			IsScanner: ((flags & 0b00000001) != 0),
+			IsBle: ((flags & 0b00000010) != 0),
+			IsAddrTypePublic: ((flags & 0b00000100) != 0)
 		});
 		offset += singleElement;
 	}
 }
 
 /* Helper functions */
+function DrawScanner(ctx, x, y, z) {
+	const color = `rgb(255, 165, ${Math.floor(Clamp(z * 12, 0, 128))})`;
+	DrawCircle(ctx, x, y, 5, color);
+
+	// Radial gradient around it
+	const radius = 100;
+	var grad = ctx.createRadialGradient(x, y, 1, x, y, radius);
+	grad.addColorStop(0, `rgba(255,165,0,0.5`);
+	grad.addColorStop(0.9, `rgba(0,0,0,0.0)`);
+
+	ctx.fillStyle = grad;
+	ctx.arc(x, y, radius, 0, 2 * Math.PI);
+	ctx.fill();
+}
+
+function DrawDevice(ctx, x, y, z) {
+	const color = `rgb(0, 165, ${Math.floor(Clamp(z * 12, 0, 128))})`;
+	DrawCircle(ctx, x, y, 5, color);
+}
+
 function DrawCircle(ctx, x, y, size, color) {
 	ctx.beginPath();
 	ctx.arc(x, y, size, 0, 2 * Math.PI)
@@ -146,7 +163,6 @@ function DrawGrid(ctx, xStart, yStart, boxWidth, boxHeight, spacing) {
 		ctx.moveTo(x, yStart);
 		ctx.lineTo(x, boxHeight);
 	}
-
 	for (var y = yStart; y <= boxHeight; y += spacing) {
 		ctx.moveTo(xStart, y);
 		ctx.lineTo(boxWidth, y);
@@ -191,4 +207,11 @@ function ByteToHex(byte) {
 function BdaToString(bda) {
 	return ByteToHex(bda[0]) + ":" + ByteToHex(bda[1]) + ":" + ByteToHex(bda[2]) + ":"
 		+ ByteToHex(bda[3]) + ":" + ByteToHex(bda[4]) + ":" + ByteToHex(bda[5]);
+}
+function EntityToString(dict) {
+	return (dict.IsScanner ?
+		`Scanner [${BdaToString(dict.Bda)}]: (${dict.X}, ${dict.Y}, ${dict.Z})` :
+		`Device [${BdaToString(dict.Bda)}]: (${dict.X}, ${dict.Y}, ${dict.Z}), ` +
+		`(${dict.IsBle ? "BLE" : "BT"}, ${dict.IsAddrTypePublic ? "Public" : "Random"})`)
+		+ "\n";
 }

@@ -21,7 +21,6 @@ struct Mac
 	/// @return equal
 	bool operator==(const Mac & other) const;
 
-
 	/// @brief Raw MAC
 	std::array<std::uint8_t, Size> Addr;
 

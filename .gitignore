@@ -9,3 +9,5 @@ managed_components/
 
 web/compressed.h
 web/visualize.min.*
+
+*.excalidraw

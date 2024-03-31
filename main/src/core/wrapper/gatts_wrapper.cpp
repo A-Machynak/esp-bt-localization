@@ -19,7 +19,7 @@ static void GattsCallbackPassthrough(esp_gatts_cb_event_t event,
                                      esp_gatt_if_t gattIf,
                                      esp_ble_gatts_cb_param_t * param)
 {
-	ESP_LOGI(TAG, "%s", ToString(event));
+	ESP_LOGV(TAG, "%s", ToString(event));
 	_Wrapper->GattsCallback(event, gattIf, param);
 }
 }  // namespace
@@ -221,12 +221,10 @@ void Wrapper::_GattsWrite(AppInfo & app, const Gatts::Type::Write & p)
 	}
 
 	// Find transaction
-	std::vector<Transaction>::iterator it = _transactions.begin();
-	for (; it != _transactions.end(); it++) {
-		if (app.AppId == it->AppId && p.conn_id == it->ConnId) {
-			break;
-		}
-	}
+	auto it = std::find_if(_transactions.begin(), _transactions.end(),
+	                       [appId = app.AppId, connId = p.conn_id](const Transaction & t) {
+		                       return appId == t.AppId && connId == t.ConnId;
+	                       });
 
 	// Sanity check
 	if ((it != _transactions.end()) != (p.offset == 0)) [[unlikely]] {

@@ -9,7 +9,7 @@ static const char * TAG = "GAP_BT";
 
 }  // namespace
 
-#ifdef CONFIG_BT_ENABLED
+#ifdef CONFIG_BT_CLASSIC_ENABLED
 #include <algorithm>
 #include <cstdint>
 #include <vector>
@@ -22,7 +22,7 @@ static Gap::Bt::Wrapper * _Wrapper;
 
 static void BtGapCallbackPassthrough(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t * param)
 {
-	ESP_LOGI(TAG, "%s", ToString(event));
+	ESP_LOGV(TAG, "%s", ToString(event));
 	_Wrapper->BtGapCallback(event, param);
 }
 }  // namespace
@@ -37,14 +37,14 @@ Wrapper::Wrapper(IGapCallback * callback)
 
 void Wrapper::Init()
 {
-	esp_bt_gap_register_callback(BtGapCallbackPassthrough);
+	ESP_ERROR_CHECK(esp_bt_gap_register_callback(BtGapCallbackPassthrough));
 }
 
 Wrapper::~Wrapper() {}
 
 void Wrapper::SetScanMode(ConnectionMode connectionMode, DiscoveryMode discoveryMode)
 {
-	esp_bt_gap_set_scan_mode(connectionMode, discoveryMode);
+	ESP_ERROR_CHECK(esp_bt_gap_set_scan_mode(connectionMode, discoveryMode));
 }
 
 void Wrapper::StartDiscovery(InquiryMode inquiryMode, float time)
@@ -60,22 +60,27 @@ void Wrapper::_StartDiscoveryImpl(InquiryMode inquiryMode)
 	constexpr float MaxTimeF = MaxTime * SecondsPerValue;
 
 	if (_discoveryTime == DiscoverForever) {
-		esp_bt_gap_start_discovery(inquiryMode, MaxTime, 0);
+		ESP_ERROR_CHECK(esp_bt_gap_start_discovery(inquiryMode, MaxTime, 0));
 	}
 	else if (_discoveryTime >= MaxTimeF) {
-		esp_bt_gap_start_discovery(inquiryMode, MaxTime, 0);
+		ESP_ERROR_CHECK(esp_bt_gap_start_discovery(inquiryMode, MaxTime, 0));
 		_discoveryTime -= MaxTimeF;
 	}
 	else {
-		const std::uint8_t t = static_cast<std::uint8_t>(_discoveryTime / MaxTimeF);
-		esp_bt_gap_start_discovery(inquiryMode, t, 0);
+		const auto div = static_cast<std::uint8_t>(_discoveryTime / SecondsPerValue);
+		const std::uint8_t t = std::clamp(div, (std::uint8_t)1, MaxTime);
+		ESP_ERROR_CHECK(esp_bt_gap_start_discovery(inquiryMode, t, 0));
 		_discoveryTime = 0.0f;
 	}
+	ESP_LOGI(TAG, "Discovery started");
 }
 
 void Wrapper::StopDiscovery()
 {
-	esp_bt_gap_cancel_discovery();
+	if (_isDiscovering) {
+		ESP_ERROR_CHECK(esp_bt_gap_cancel_discovery());
+		ESP_LOGI(TAG, "Discovery stopped");
+	}
 }
 
 void Wrapper::BtGapCallback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t * param)
@@ -124,7 +129,6 @@ Wrapper::Wrapper([[maybe_unused]] IGapCallback * callback)
 }
 }  // namespace Gap::Bt
 #endif
-
 
 const char * ToString(const esp_bt_gap_cb_event_t event)
 {

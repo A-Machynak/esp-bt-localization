@@ -25,13 +25,11 @@ constexpr esp_bt_uuid_t UuidToStruct(std::string_view uuid, bool flip);
 
 }  // namespace Util
 
-constexpr bool operator==(const esp_bt_uuid_t & lhs, const std::array<std::uint8_t, Util::UuidByteCount> & rhs);
+constexpr bool operator==(const esp_bt_uuid_t & lhs,
+                          const std::array<std::uint8_t, Util::UuidByteCount> & rhs);
 constexpr bool operator==(const esp_bt_uuid_t & lhs, std::string_view rhs);
-constexpr bool operator==(std::string_view lhs, const std::array<std::uint8_t, Util::UuidByteCount> & rhs);
-
-/// @brief Uuid to string
-/// @param uuid uuid
-/// @return string (hex format)
+constexpr bool operator==(std::string_view lhs,
+                          const std::array<std::uint8_t, Util::UuidByteCount> & rhs);
 constexpr std::string ToString(esp_bt_uuid_t uuid);
 
 #include "core/utility/uuid.hpp"

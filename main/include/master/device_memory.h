@@ -1,21 +1,17 @@
 #pragma once
 
+#include "core/device_data.h"
 #include "core/utility/mac.h"
 #include "core/utility/uuid.h"
 #include "core/wrapper/device.h"
 #include "master/device_memory_data.h"
 
 #include "math/matrix.h"
-#include "math/minimizer/functions/anchor_distance.h"
-#include "math/minimizer/functions/point_to_anchors.h"
-#include "math/minimizer/gradient_minimizer.h"
 
-#include <esp_gatt_defs.h>
-
+#include <chrono>
 #include <limits>
 #include <map>
 #include <span>
-#include <variant>
 
 namespace
 {
@@ -26,43 +22,29 @@ constexpr std::size_t Dimensions = 3;
 /// Minimum amount of device measurements to try calculating the device position
 constexpr std::size_t MinimumMeasurements = 2;
 
+/// Minimum amount of scanners to calculate their relative positions
+constexpr std::size_t MinimumScanners = 2;
+
 }  // namespace
 
 namespace Master
 {
-
-struct MeasurementData
-{
-	MeasurementData(std::size_t scannerIdx, std::int8_t rssi);
-
-	std::size_t ScannerIdx;
-	std::int8_t Rssi;
-};
-
-struct DeviceMeasurements
-{
-	DeviceMeasurements(const Mac & bda, const MeasurementData & firstMeasurement);
-
-	Mac Bda;
-	std::vector<MeasurementData> Data;
-	std::array<float, 3> Position;
-
-	static constexpr float InvalidPos = std::numeric_limits<float>::max();
-	inline bool IsInvalidPos() const { return Position[0] == InvalidPos; }
-};
-
+/// @brief Index type
 using ScannerIdx = std::size_t;
-constexpr ScannerIdx InvalidScannerIdx = std::numeric_limits<std::size_t>::max();
+
+/// @brief Invalid index
+constexpr ScannerIdx InvalidScannerIdx = std::numeric_limits<ScannerIdx>::max();
 
 /// @brief Memory for storing and manipulating with devices and scanners.
 ///
 /// "RSSI" is reffered to as "distance", since that's what it represents
-/// and is expected to be converted to in the end. Floats aren't used here yet,
+/// and is expected to be converted to in the end. Floats aren't used before this point yet,
 /// since (according to ESP docs) floating point math is quite a bit slower on ESP.
 /// Converting it to distance this early on would also be very limiting.
 class DeviceMemory
 {
 public:
+	/// @brief Constructor
 	DeviceMemory();
 
 	/// @brief Add new scanner
@@ -70,17 +52,13 @@ public:
 	void AddScanner(const ScannerInfo & scanner);
 
 	/// @brief Update distance information between a scanner and a device/scanner.
-	/// Also used to add new distance information.
+	/// Also used to add new (non-scanner) devices.
 	/// @param scanner scanner which received this information
-	/// @param device device or scanner
-	/// @param rssi RSSI, aka "distance"
+	/// @param device device/scanner data received from Scanner
 	/// @{
-	void UpdateDistance(const Mac & scanner,
-	                    std::span<const Mac> device,
-	                    std::span<const std::int8_t> rssi);
-	void UpdateDistance(std::uint16_t scannerConnId,
-	                    std::span<const Mac> device,
-	                    std::span<const std::int8_t> rssi);
+	void UpdateDistance(const std::uint16_t scannerConnId,
+	                    const Core::DeviceDataView::Array & device);
+	void UpdateDistance(const Mac & scanner, const Core::DeviceDataView::Array & device);
 	/// @}
 
 	/// @brief Tries to find a scanner, which is missing a distance information in another
@@ -111,34 +89,44 @@ public:
 	const Math::Matrix<float> * UpdateScannerPositions();
 	const std::vector<DeviceMeasurements> & UpdateDevicePositions();
 
-	const std::vector<ScannerInfo> & GetScanners() const;
-
+	/// @brief Serializes the output
+	/// @return span; valid until the next call of this method
 	std::span<std::uint8_t> SerializeOutput();
 
+	/// @brief Scanner from connection ID
+	/// @param connId connection ID
+	/// @return scanner or nullptr if not found
+	const ScannerDetail * GetScanner(std::uint16_t connId) const;
+
+	/// @brief Scanners getter
+	/// @return all scanners
+	const std::vector<ScannerDetail> & GetScanners() const;
+
 private:
-	/// Positions and distance matrices
-	/// @{
+	/// @brief Scanner distances - NxN symmetric matrix.
 	Math::Matrix<float> _scannerDistances;
+	/// @brief Resolved scanner positions
 	Math::Matrix<float> _scannerPositions;
-	/// @}
-	bool _scannerDistancesSet = false;
+	bool _scannerPositionsSet = false;
+
+	/// @brief Used as an initial guess for devices
+	std::array<float, 3> _scannerCenter{0.0, 0.0, 0.0};
 
 	/// Connected scanners, devices and maps for BDA lookup.
 	/// @{
-	std::vector<ScannerInfo> _scanners;
+	std::vector<ScannerDetail> _scanners;
 	std::vector<DeviceMeasurements> _devices;
 	std::map<Mac, std::size_t, Mac::Cmp> _scannerMap;
 	std::map<Mac, std::size_t, Mac::Cmp> _deviceMap;
 	/// @}
+
+	/// @brief For raw data serialization
 	std::vector<std::uint8_t> _serializedData;
 
 	/// @brief Update distance information between a scanner and devices/scanners
 	/// @param scanner scanner
 	/// @param devices devices and/or scanners
-	/// @param rssis distances
-	void _UpdateDistance(std::size_t scannerIdx,
-	                     std::span<const Mac> devices,
-	                     std::span<const std::int8_t> rssis);
+	void _UpdateDistance(ScannerIdx scannerIdx, const Core::DeviceDataView::Array & devices);
 
 	/// @brief Update distance information to a device
 	/// @param scannerIdx scanner
@@ -160,14 +148,7 @@ private:
 	/// @param scannerIdx index to _scanners
 	void _RemoveDeviceMeasurements(std::size_t scannerIdx);
 
-	// [ 000 | 0.0 | 0.0 | 0.0 ]
-	// [ XXX | 000 | 0.0 | 0.0 ]
-	// [ XXX | XXX | 000 | 0.0 ]
-	// [ XXX | XXX | XXX | 000 ]
-
-	// [ 000 | 0.0 | 0.0 ]
-	// [ XXX | 000 | 0.0 ]
-	// [ XXX | XXX | 000 ]
+	void _UpdateScannerCenter();
 };
 
 }  // namespace Master

@@ -1,7 +1,5 @@
 #pragma once
+#include <cstddef>
 
-#ifndef MASTER_MAX_SCANNER_CONNECTIONS
-#define MASTER_MAX_SCANNER_CONNECTIONS 32
-#endif
-
-
+/// @brief Multilateration in 2D or 3D.
+constexpr std::size_t Dimensions = 3;

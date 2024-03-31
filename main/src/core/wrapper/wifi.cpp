@@ -1,9 +1,8 @@
 #include "core/wrapper/wifi.h"
 
-
 const char * ToString(wifi_err_reason_t reason)
 {
-	switch(reason) {
+	switch (reason) {
 	case WIFI_REASON_UNSPECIFIED:
 		return "UNSPECIFIED";
 	case WIFI_REASON_AUTH_EXPIRE:

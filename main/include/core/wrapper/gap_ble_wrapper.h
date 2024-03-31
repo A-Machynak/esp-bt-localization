@@ -27,18 +27,31 @@ public:
 	Wrapper(IGapCallback * callback);
 	~Wrapper();
 
-	/// @brief Mandatory initialization. Cannot be called during constructor.
+	/// @brief Mandatory initialization.
+	/// Cannot be called during constructor (can be static).
 	void Init();
 
+	/// @brief Start/Stop advertising
+	/// @{
 	void StartAdvertising(esp_ble_adv_params_t * params, float time = AdvertiseForever);
 	void StopAdvertising();
+	/// @}
 
+	/// @brief Start/Stop scanning
+	/// @{
 	void StartScanning(float time = ScanForever);
 	void StopScanning();
+	/// @}
 
+	/// @brief Setters
+	/// @{
 	void SetScanParams(esp_ble_scan_params_t * params);
 	void SetRawAdvertisingData(std::span<std::uint8_t> data);
+	/// @}
 
+	/// @brief BLE GAP Callback. Not meant to be called directly.
+	/// @param event event
+	/// @param param parameters
 	void BleGapCallback(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t * param);
 
 private:
@@ -73,7 +86,6 @@ constexpr std::uint16_t ConvertAdvertisingInterval(float seconds);
 constexpr std::uint16_t ConvertScanInterval(float seconds);
 
 }  // namespace Gap::Ble
-
 
 const char * ToString(esp_gap_ble_cb_event_t event);
 

@@ -37,7 +37,7 @@ static void GattcCallbackPassthrough(esp_gattc_cb_event_t event,
                                      esp_gatt_if_t gattIf,
                                      esp_ble_gattc_cb_param_t * param)
 {
-	// ESP_LOGI(TAG, "%s", ToString(event));
+	ESP_LOGV(TAG, "%s", ToString(event));
 	_Wrapper->GattcCallback(event, gattIf, param);
 }
 }  // namespace

@@ -128,7 +128,7 @@ std::string ToString(const Bt::Device & d)
 	std::stringstream ss;
 	// clang-format off
 	ss << "{ Bda: \"" << ToString(d.Bda)
-	   << ", ";
+	   << "\", ";
 	if (d.IsBle()) {
 		const auto & ble = std::get<Bt::BleSpecific>(d.Data);
 		ss << "DevType: \"Ble\", "

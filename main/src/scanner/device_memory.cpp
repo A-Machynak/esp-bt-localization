@@ -13,75 +13,15 @@ static const char * TAG = "DevMem";
 namespace Scanner
 {
 
-DeviceInfo::DeviceInfo(std::span<const std::uint8_t, 6> mac,
-                       std::int8_t rssi,
-                       std::uint8_t flags,
-                       esp_ble_evt_type_t eventType,
-                       std::span<const std::uint8_t> data)
-    : _outData(mac, rssi, flags, eventType, data)
-    , _firstUpdate(Clock::now())
-    , _lastUpdate(_firstUpdate)
-    , _rssi(rssi)
-{
-}
-
-void DeviceInfo::Update(std::int8_t rssi)
-{
-	_lastUpdate = Clock::now();
-	_rssi.Add(rssi);
-	_outData.View.Rssi() = _rssi.Average();
-}
-
-void DeviceInfo::Serialize(std::vector<std::uint8_t> & out) const
-{
-	out.reserve(out.size() + _outData.Data.size());
-	std::copy(std::begin(_outData.Data), std::end(_outData.Data), std::back_inserter(out));
-}
-
-const Core::DeviceData & DeviceInfo::GetDeviceData() const
-{
-	return _outData;
-}
-
-const DeviceInfo::TimePoint & DeviceInfo::GetLastUpdate() const
-{
-	return _lastUpdate;
-}
-
-/*const DeviceInfo::TimePoint & DeviceInfo::GetUpdateInterval() const
-{
-    return _updateInterval;
-}*/
-
-DeviceInfo::AverageWindow::AverageWindow(std::int8_t rssi)
-{
-	std::fill(Window.begin(), Window.end(), rssi);
-}
-
-void DeviceInfo::AverageWindow::Add(std::int8_t value)
-{
-	Window[Idx] = value;
-	Idx = _NextIdx(Idx);
-}
-
-std::int8_t DeviceInfo::AverageWindow::Average() const
-{
-	std::int16_t sum = 0;
-	for (const std::int8_t value : Window) {
-		sum += value;
-	}
-	return static_cast<std::int8_t>(sum / Size);
-}
-
-std::uint8_t DeviceInfo::AverageWindow::_NextIdx(std::uint8_t idx)
-{
-	return idx + 1 == Size ? 0 : idx + 1;
-}
-
 DeviceMemory::DeviceMemory(std::size_t sizeLimit)
     : _sizeLimit(sizeLimit)
 {
 	_devData.reserve(_sizeLimit);
+}
+
+void DeviceMemory::SetAssociation(bool enabled)
+{
+	_association = enabled;
 }
 
 void DeviceMemory::AddDevice(const Bt::Device & device)
@@ -94,7 +34,8 @@ void DeviceMemory::AddDevice(const Bt::Device & device)
 	// Erase stale devices and try to find if this new device already exists.
 	DeviceInfo * devFromVec = nullptr;
 
-	const auto now = DeviceInfo::Clock::now();
+	// Try to find if this device already exists and delete stale devices at the same time.
+	const auto now = Clock::now();
 	std::erase_if(_devData, [&](DeviceInfo & dev) {
 		if (std::equal(device.Bda.Addr.begin(), device.Bda.Addr.end(),
 		               dev.GetDeviceData().Data.data())) {
@@ -111,10 +52,12 @@ void DeviceMemory::AddDevice(const Bt::Device & device)
 		devFromVec->Update(device.GetRssi());
 		return;
 	}
+
 	// Device doesn't exist, attempt to associate
 	if (_AssociateDevice(device)) {
 		return;
 	}
+
 	// Couldn't associate; create new
 	// Set flags
 	std::uint8_t flags = 0;
@@ -131,14 +74,16 @@ void DeviceMemory::AddDevice(const Bt::Device & device)
 		const auto & ble = device.GetBle();
 
 		std::span<const std::uint8_t, Bt::BleSpecific::Eir::Size> eir{ble.EirData.Data};
-		_devData.emplace_back(mac, device.GetRssi(), flags, ble.EvtType, eir);
+		_devData.emplace_back(mac, device.GetRssi(), static_cast<Core::FlagMask>(flags),
+		                      ble.EvtType, eir);
 	}
 	else {
 		// New BR/EDR device
 		// const auto & brEdr = device.GetBrEdr();
 		const esp_ble_evt_type_t evt = ESP_BLE_EVT_CONN_ADV;
-		// TODO: Could pass some data
-		_devData.emplace_back(mac, device.GetRssi(), flags, evt, std::span<const std::uint8_t>());
+		// TODO: Could pass some data?
+		_devData.emplace_back(mac, device.GetRssi(), static_cast<Core::FlagMask>(flags), evt,
+		                      std::span<const std::uint8_t>());
 	}
 }
 
@@ -149,18 +94,17 @@ void DeviceMemory::SerializeData(std::vector<std::uint8_t> & out)
 	out.clear();
 	out.resize(_devData.size() * Core::DeviceDataView::Size);
 	for (std::size_t i = 0; i < _devData.size(); i++) {
-		const Core::DeviceData & data = _devData[i].GetDeviceData();
 		const std::size_t offset = i * Core::DeviceDataView::Size;
-		std::copy_n(data.Data.begin(), Core::DeviceDataView::Size, out.data() + offset);
+		std::span<std::uint8_t, Core::DeviceDataView::Size> span(out.data() + offset,
+		                                                         Core::DeviceDataView::Size);
+		_devData.at(i).Serialize(span);
 	}
 }
 
 void DeviceMemory::RemoveStaleDevices()
 {
 	// Remove devices not updated for `StaleLimit`
-	const auto now = DeviceInfo::Clock::now();
-
-	std::erase_if(_devData, [&](const DeviceInfo & dev) {
+	std::erase_if(_devData, [now = Clock::now()](const DeviceInfo & dev) {
 		return std::chrono::duration_cast<std::chrono::milliseconds>(now - dev.GetLastUpdate())
 		           .count()
 		       > StaleLimit;
@@ -169,6 +113,10 @@ void DeviceMemory::RemoveStaleDevices()
 
 bool DeviceMemory::_AssociateDevice(const Bt::Device & device)
 {
+	if (_association) {
+		return false;  // Disabled
+	}
+
 	// Attempt to associate a device with random address to an already existing one
 	if (!device.IsBle()) {
 		return false;  // Associate only BLE devices
@@ -188,8 +136,8 @@ bool DeviceMemory::_AssociateDevice(const Bt::Device & device)
 		if (data.View.AdvDataSize() == ble.AdvDataLen && data.View.EventType() == ble.EvtType
 		    && std::equal(data.View.AdvData().begin(), data.View.AdvData().end(),
 		                  ble.EirData.Data.begin())) {
-			// Associated with device - update
-			devInfo.Update(device.GetRssi());
+			// Associated with device - delete old device and update new one
+			devInfo.Update(device.Bda.Addr, device.GetRssi());
 			return true;
 		}
 	}

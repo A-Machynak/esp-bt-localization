@@ -11,6 +11,9 @@
 namespace Core
 {
 
+/// @brief Maximum amount of devices
+constexpr std::size_t DefaultMaxDevices = 128;
+
 /// @brief Mask for flags
 enum FlagMask : std::uint8_t
 {
@@ -20,6 +23,8 @@ enum FlagMask : std::uint8_t
 
 /// @brief View into device data.
 /// Only provides a better interface to access elements and add new ones in the future.
+/// We are assuming that basically everything here gets inlined.
+///
 /// This is the data sent from a Scanner to the Master.
 struct DeviceDataView
 {
@@ -102,6 +107,28 @@ struct DeviceDataView
 
 	/// @brief Data span
 	std::span<std::uint8_t, Size> Span;
+
+	/// @brief Array of DeviceDataView for convenience.
+	struct Array
+	{
+		/// @brief Constructor from raw data
+		/// @param data raw data; expected to be divisible by DeviceDataView::Size
+		Array(std::span<std::uint8_t> data);
+
+		/// @brief Access view at index; no checks are provided.
+		/// @param i index
+		/// @return view
+		/// @{
+		DeviceDataView operator[](std::size_t i);
+		DeviceDataView operator[](std::size_t i) const;
+		/// @}
+
+		/// @brief Data view
+		std::span<std::uint8_t> Span;
+
+		/// @brief How many views does the array contain
+		std::size_t Size;
+	};
 };
 
 /// @brief Storage for device data with its view
@@ -119,7 +146,7 @@ struct DeviceData
 	/// @param advData advertising data
 	DeviceData(std::span<const std::uint8_t, 6> mac,
 	           std::int8_t rssi,
-	           std::uint8_t flags,
+	           FlagMask flags,
 	           esp_ble_evt_type_t eventType,
 	           std::span<const std::uint8_t> advData);
 
@@ -129,5 +156,13 @@ struct DeviceData
 	/// @brief Data view to access it
 	DeviceDataView View;
 };
+
+/// @brief Calculate memory used by devices when serialized
+/// @param devices how many devices
+/// @return how many bytes of memory will be used
+constexpr std::size_t DeviceMemoryByteSize(std::size_t devices = DefaultMaxDevices)
+{
+	return devices * Core::DeviceDataView::Size;
+}
 
 }  // namespace Core

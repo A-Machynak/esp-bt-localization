@@ -10,7 +10,7 @@ namespace Type
 {
 
 /// @brief GATTS callback parameter typedefs
-/// {
+/// @{
 using Register = esp_ble_gatts_cb_param_t::gatts_reg_evt_param;
 using Read = esp_ble_gatts_cb_param_t::gatts_read_evt_param;
 using Write = esp_ble_gatts_cb_param_t::gatts_write_evt_param;
@@ -45,8 +45,8 @@ class IGattsCallback
 {
 public:
 	virtual ~IGattsCallback() {}
-	// clang-format off
 
+	// clang-format off
 	virtual void GattsRegister(const Register &) {}              ///< ESP_GATTS_REG_EVT
 	virtual void GattsRead(const Read &) {}                      ///< ESP_GATTS_READ_EVT
 	virtual void GattsWrite(const Write &) {}                    ///< ESP_GATTS_WRITE_EVT
@@ -72,10 +72,8 @@ public:
 	virtual void GattsCreateAttrTab(const AddAttrTab &) {}       ///< ESP_GATTS_CREAT_ATTR_TAB_EVT
 	virtual void GattsSetAttrVal(const SetAttrVal &) {}          ///< ESP_GATTS_SET_ATTR_VAL_EVT
 	virtual void GattsSendSrvcChange(const SendSrvcChange &) {}  ///< ESP_GATTS_SEND_SERVICE_CHANGE_EVT
-
 	// clang-format on
 };
-
 
 }  // namespace Gatts
 

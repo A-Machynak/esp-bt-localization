@@ -4,10 +4,8 @@
 #include "core/wrapper/device.h"
 #include "core/wrapper/interface/gattc_if.h"
 
-
 #include <esp_gatt_common_api.h>
 #include <esp_gattc_api.h>
-
 
 #include <cstdint>
 #include <vector>
@@ -51,6 +49,8 @@ public:
 	/// @param id application ID
 	void UnregisterApp(std::uint16_t appId);
 
+	/// @brief Local MTU setter
+	/// @param mtu MTU; will be clamped to valid values
 	void SetLocalMtu(std::uint16_t mtu);
 
 	/// @brief Write characteristic value.

@@ -12,9 +12,10 @@
 #include <esp_gap_ble_api.h>
 #include <esp_gap_bt_api.h>
 
+#include "core/utility/mac.h"
 #include "core/wrapper/interface/gap_ble_if.h"
 #include "core/wrapper/interface/gap_bt_if.h"
-#include "core/utility/mac.h"
+
 
 namespace Bt
 {
@@ -31,6 +32,8 @@ enum class DeviceType
 /// @brief Bt Classic specific data from discovery result
 struct BrEdrSpecific
 {
+	/// @brief Constructor
+	/// @param dr BT Discovery result
 	BrEdrSpecific(const Gap::Bt::DiscRes & dr);
 
 	/// @brief Bluetooth device name
@@ -50,6 +53,8 @@ struct BrEdrSpecific
 /// @brief BLE specific data from scan result
 struct BleSpecific
 {
+	/// @brief Constructor
+	/// @param sr BLE Scan result
 	BleSpecific(const Gap::Ble::ScanResult & sr);
 
 	/// @brief Inquiry/Discovery ...

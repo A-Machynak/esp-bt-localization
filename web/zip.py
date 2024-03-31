@@ -1,4 +1,4 @@
-import os, subprocess, gzip, argparse
+import os, sys, subprocess, gzip, argparse
 
 dir_path = os.path.dirname(os.path.realpath(__file__)).replace("\\", "/")
 
@@ -34,14 +34,14 @@ if args.automatic:
 	content_html = html_minif.stdout.decode('ascii')
 	if html_minif.returncode != 0:
 		print(f"HTML minification error: {html_minif.stderr.decode()}")
-		exit(1)
+		sys.exit(1)
 
 	# JS
 	cmd = "google-closure-compiler -O ADVANCED --js " + args.js_file
 	js_minif = subprocess.run(cmd, shell=True, capture_output=True)
 	if js_minif.returncode != 0:
 		print(f"JS minification error: {js_minif.stderr.decode()}")
-		exit(1)
+		sys.exit(1)
 	content_js = js_minif.stdout.decode('ascii')
 else:
 	print(f"Html file: \"{args.html_min_file}\", Js file: \"{args.js_min_file}\"")
@@ -55,7 +55,7 @@ idx = content_html.rfind("</body>")
 if idx == -1:
 	print("Couldn't find </body> tag to embed JS. Inserting at the end")
 	idx = len(content_html)
-content = (content_html[:idx] + "<script>" + content_js + "</script>" + content_html[idx:])
+content = content_html[:idx] + "<script>" + content_js + "</script>" + content_html[idx:]
 
 # Compress
 compressed = gzip.compress(content.encode("ascii"))

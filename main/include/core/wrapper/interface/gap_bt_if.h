@@ -8,6 +8,8 @@ namespace Gap::Bt
 namespace Type
 {
 
+/// @brief BT GAP callback parameter typedefs
+/// @{
 using DiscRes = esp_bt_gap_cb_param_t::disc_res_param;
 using DiscStateChanged = esp_bt_gap_cb_param_t::disc_state_changed_param;
 using RmtSrvcs = esp_bt_gap_cb_param_t::rmt_srvcs_param;
@@ -26,7 +28,7 @@ using RemoveBondDevCmpl = esp_bt_gap_cb_param_t::bt_remove_bond_dev_cmpl_evt_par
 using QosCmpl = esp_bt_gap_cb_param_t::qos_cmpl_param;
 using AclConnCmplStat = esp_bt_gap_cb_param_t::acl_conn_cmpl_stat_param;
 using AclDisconnCmplStat = esp_bt_gap_cb_param_t::acl_disconn_cmpl_stat_param;
-
+/// @}
 }  // namespace Type
 
 using namespace Type;

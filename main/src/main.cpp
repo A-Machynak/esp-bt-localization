@@ -24,10 +24,11 @@ extern "C" void app_main(void)
 	}
 	ESP_ERROR_CHECK(ret);
 
+	// Config
 	#if defined(CONFIG_MASTER)
-		Master::WifiConfig cfg;
+		Master::AppConfig cfg;
 		#if defined(CONFIG_WIFI_AS_AP)
-			cfg = Master::WifiConfig {
+			cfg.WifiCfg = Master::WifiConfig {
 				.Mode = Master::WifiOpMode::AP,
 				.Ssid = CONFIG_WIFI_SSID,
 				.Password = CONFIG_WIFI_PASSWORD,
@@ -35,15 +36,24 @@ extern "C" void app_main(void)
 				.ApMaxConnections = CONFIG_WIFI_MAX_CONNECTIONS,
 			};
 		#elif defined(CONFIG_WIFI_AS_STA)
-			cfg = Master::WifiConfig {
+			cfg.WifiCfg = Master::WifiConfig {
 				.Mode = Master::WifiOpMode::STA,
 				.Ssid = CONFIG_WIFI_SSID,
 				.Password = CONFIG_WIFI_PASSWORD
 			};
 		#endif
-		app.Init(cfg);
 	#elif defined(CONFIG_SCANNER)
-		app.Init();
+		Scanner::AppConfig cfg;
+		#if defined(CONFIG_SCANNER_SCAN_CLASSIC_ONLY)
+			cfg.Mode = Scanner::ScanMode::ClassicOnly;
+		#elif defined(CONFIG_SCANNER_SCAN_BLE_ONLY)
+			cfg.Mode = Scanner::ScanMode::BleOnly;
+		#else
+			cfg.Mode = Scanner::ScanMode::Both;
+			cfg.ScanModePeriod = CONFIG_SCANNER_SCAN_BOTH_PERIOD;
+		#endif
 	#endif
+
+	app.Init(cfg);
 }
 // clang-format on

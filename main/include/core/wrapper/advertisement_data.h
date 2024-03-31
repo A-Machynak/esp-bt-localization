@@ -45,13 +45,12 @@ private:
 
 	/// @brief Builder - prevent copy
 	/// @param -
-	AdvertisementDataBuilder(const AdvertisementDataBuilder &);
+	AdvertisementDataBuilder(const AdvertisementDataBuilder &){};
 
 	/// @brief Builder - prevent assignment
 	/// @param -
 	/// @return -
-	AdvertisementDataBuilder & operator=(const AdvertisementDataBuilder &);
+	AdvertisementDataBuilder & operator=(const AdvertisementDataBuilder &) { return *this; };
 };
 
 }  // namespace Ble
-

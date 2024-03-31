@@ -26,7 +26,6 @@ Matrix<T>::Matrix()
     : _rows(0)
     , _cols(0)
 {
-	_data.reserve(10*10);
 }
 
 template <typename T>
@@ -34,7 +33,6 @@ Matrix<T>::Matrix(std::size_t rows, std::size_t cols)
     : _rows(rows)
     , _cols(cols)
 {
-	_data.reserve(10*10);
 	_data.resize(rows * cols);
 }
 

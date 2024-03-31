@@ -7,6 +7,9 @@ namespace Gattc
 
 namespace Type
 {
+
+/// @brief GATTc callback parameter typedefs
+/// @{
 using Reg = esp_ble_gattc_cb_param_t::gattc_reg_evt_param;
 using Open = esp_ble_gattc_cb_param_t::gattc_open_evt_param;
 using ReadChar = esp_ble_gattc_cb_param_t::gattc_read_char_evt_param;
@@ -32,10 +35,12 @@ using SetAssoc = esp_ble_gattc_cb_param_t::gattc_set_assoc_addr_cmp_evt_param;
 using GetAddrList = esp_ble_gattc_cb_param_t::gattc_get_addr_list_evt_param;
 using DisSrvcCmpl = esp_ble_gattc_cb_param_t::gattc_dis_srvc_cmpl_evt_param;
 using ReadMultiVar = esp_ble_gattc_cb_param_t::gattc_read_char_evt_param;
+/// @}
 }  // namespace Type
 
 using namespace Type;
 
+/// @brief GATTc callback interface
 class IGattcCallback
 {
 public:
