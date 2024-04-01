@@ -41,17 +41,22 @@ static void UpdateDeviceDataTask(void * pvParameters)
 
 namespace Master::Impl
 {
-App::App()
-    : _bleGap(this)
+App::App(const AppConfig & cfg)
+    : _cfg(cfg)
+    , _bleGap(this)
 {
 }
 
-void App::Init(const AppConfig & config)
+void App::Init()
 {
 	// Reserve enough space, otherwise BTC will run out of it while allocating it himself for
 	// some reason
 	_tmpSerializedData.reserve(Core::DeviceDataView::Size * 128);
 	_tmpScanners.reserve(2);
+
+	// Mutex for DeviceMemory
+	_memMutex = xSemaphoreCreateMutex();
+	assert(_memMutex != nullptr);
 
 	Bt::EnableBtController();
 	Bt::EnableBluedroid();
@@ -64,8 +69,6 @@ void App::Init(const AppConfig & config)
 		// Scheduler for timers
 		vTaskStartScheduler();
 	}
-	// Mutex for DeviceMemory
-	_memMutex = xSemaphoreCreateMutex();
 
 	constexpr auto StackSize1 = std::max(static_cast<std::uint32_t>(2 * 16'424),
 	                                     static_cast<std::uint32_t>(configMINIMAL_STACK_SIZE));
@@ -85,7 +88,7 @@ void App::Init(const AppConfig & config)
 	_ScanForScanners();
 
 	// Finally, initialize http server
-	_httpServer.Init(config.WifiCfg);
+	_httpServer.Init(_cfg.WifiCfg);
 }
 
 void App::GapBleScanResult(const Gap::Ble::Type::ScanResult & p)

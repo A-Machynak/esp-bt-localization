@@ -8,16 +8,10 @@
 #include "core/device_data.h"
 #include "core/wrapper/device.h"
 #include "scanner/device_memory_data.h"
+#include "scanner/scanner_cfg.h"
 
 namespace Scanner
 {
-
-/// @brief Maximum interval in milliseconds between updates, after which the device is removed
-constexpr std::int64_t StaleLimit = 30'000;
-
-/// @brief Whether or not to enable BLE device association.
-/// - BLE devices with random BDA and same advertising data will be resolved as one device.
-constexpr bool DefaultEnableAssociation = true;
 
 /// @brief Device memory for scanner
 class DeviceMemory
@@ -25,14 +19,14 @@ class DeviceMemory
 public:
 	/// @brief Constructor
 	/// @param sizeLimit maximum amount of devices to hold
-	DeviceMemory(std::size_t sizeLimit = Core::DefaultMaxDevices);
+	DeviceMemory(const AppConfig::DeviceMemoryConfig & cfg);
 
 	/// @brief Add new device
 	/// @param device device info
 	void AddDevice(const Bt::Device & device);
 
 	/// @brief Serialize data
-	/// @param[out] output output destination. Will be cleared an resized
+	/// @param[out] output output destination. Will be cleared and resized
 	void SerializeData(std::vector<std::uint8_t> & out);
 
 	/// @brief Manually remove stale devices.
@@ -40,18 +34,9 @@ public:
 	/// so it isn't necessary, to be called manually.
 	void RemoveStaleDevices();
 
-	/// @brief Enable or disable device association.
-	/// - BLE devices with random BDA and same advertising data will be
-	/// resolved as one device.
-	/// @param enabled true - enable; false - disable; default: false
-	void SetAssociation(bool enabled);
-
 private:
-	/// @brief Maximum device limit
-	const std::size_t _sizeLimit;
-
-	/// @brief Enable/disable association
-	bool _association{DefaultEnableAssociation};
+	/// @brief Configuration
+	const AppConfig::DeviceMemoryConfig & _cfg;
 
 	/// @brief Device data
 	std::vector<DeviceInfo> _devData;

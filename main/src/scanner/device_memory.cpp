@@ -13,43 +13,31 @@ static const char * TAG = "DevMem";
 namespace Scanner
 {
 
-DeviceMemory::DeviceMemory(std::size_t sizeLimit)
-    : _sizeLimit(sizeLimit)
+DeviceMemory::DeviceMemory(const AppConfig::DeviceMemoryConfig & cfg)
+    : _cfg(cfg)
 {
-	_devData.reserve(_sizeLimit);
-}
-
-void DeviceMemory::SetAssociation(bool enabled)
-{
-	_association = enabled;
+	_devData.reserve(_cfg.MemorySizeLimit);
 }
 
 void DeviceMemory::AddDevice(const Bt::Device & device)
 {
-	if (_devData.size() >= _sizeLimit) {
-		ESP_LOGI(TAG, "Reached size limit");
+	if (_devData.size() >= _cfg.MemorySizeLimit) {
+		ESP_LOGW(TAG, "Reached size limit");
 		return;
 	}
 
-	// Erase stale devices and try to find if this new device already exists.
-	DeviceInfo * devFromVec = nullptr;
+	// Remove old devices
+	RemoveStaleDevices();
 
-	// Try to find if this device already exists and delete stale devices at the same time.
-	const auto now = Clock::now();
-	std::erase_if(_devData, [&](DeviceInfo & dev) {
-		if (std::equal(device.Bda.Addr.begin(), device.Bda.Addr.end(),
-		               dev.GetDeviceData().Data.data())) {
-			devFromVec = &dev;
-			return false;
-		}
-		return std::chrono::duration_cast<std::chrono::milliseconds>(now - dev.GetLastUpdate())
-		           .count()
-		       > StaleLimit;
+	// Try to find this device
+	const auto it = std::find_if(_devData.begin(), _devData.end(), [&](const DeviceInfo & dev) {
+		return std::equal(device.Bda.Addr.begin(), device.Bda.Addr.end(),
+		                  dev.GetDeviceData().Data.data());
 	});
 
-	if (devFromVec) {
+	if (it != _devData.end()) {
 		// Found the device, just update it
-		devFromVec->Update(device.GetRssi());
+		it->Update(device.GetRssi());
 		return;
 	}
 
@@ -68,7 +56,7 @@ void DeviceMemory::AddDevice(const Bt::Device & device)
 		}
 	}
 
-	const std::span<const std::uint8_t, 6> mac{device.Bda.Addr.begin(), 6};
+	const std::span<const std::uint8_t, 6> mac{device.Bda.Addr.data(), 6};
 	if (device.IsBle()) {
 		// New BLE device
 		const auto & ble = device.GetBle();
@@ -104,16 +92,16 @@ void DeviceMemory::SerializeData(std::vector<std::uint8_t> & out)
 void DeviceMemory::RemoveStaleDevices()
 {
 	// Remove devices not updated for `StaleLimit`
-	std::erase_if(_devData, [now = Clock::now()](const DeviceInfo & dev) {
+	std::erase_if(_devData, [limit = _cfg.StaleLimit, now = Clock::now()](const DeviceInfo & dev) {
 		return std::chrono::duration_cast<std::chrono::milliseconds>(now - dev.GetLastUpdate())
 		           .count()
-		       > StaleLimit;
+		       > limit;
 	});
 }
 
 bool DeviceMemory::_AssociateDevice(const Bt::Device & device)
 {
-	if (_association) {
+	if (!_cfg.EnableAssociation) {
 		return false;  // Disabled
 	}
 

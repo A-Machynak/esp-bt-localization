@@ -5,7 +5,8 @@ CONFIG_SCANNER=y
 # CONFIG_SCANNER_SCAN_CLASSIC_ONLY=y  # Scan for BT Classic devices only
 # CONFIG_SCANNER_SCAN_BLE_ONLY=y      # Scan for BT BLE devices only
 # CONFIG_SCANNER_SCAN_BOTH=y          # Periodically change between Classic and BLE
-# CONFIG_SCANNER_SCAN_BOTH_PERIOD=30  # Period to change Classic and BLE Scans (max. 30) [s]
+# CONFIG_SCANNER_SCAN_BOTH_PERIOD_CLASSIC=5  # Period to change Classic and BLE Scans (max. 30) [s]
+# CONFIG_SCANNER_SCAN_BOTH_PERIOD_BLE=15  # Period to change Classic and BLE Scans (max. 30) [s]
 
 # Target
 # CONFIG_IDF_TARGET=esp32c3

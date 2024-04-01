@@ -16,23 +16,29 @@ constexpr std::uint16_t ScannerAppId = 0;
 /// @brief Logger tag
 static const char * TAG = "Scanner";
 
+constexpr TickType_t BlockTimeInCallbacks = pdMS_TO_TICKS(500);
+
 }  // namespace
 
 namespace Scanner::Impl
 {
 
-App::App()
-    : _bleGap(this)
+App::App(const AppConfig & cfg)
+    : _cfg(cfg)
+    , _bleGap(this)
     , _btGap(this)
+    , _memory(_cfg.DeviceMemoryCfg)
 {
 }
 
-void App::Init(const AppConfig & cfg)
+void App::Init()
 {
-	_cfg = cfg;
-
 	Bt::EnableBtController();
 	Bt::EnableBluedroid();
+
+	// Mutex for DeviceMemory
+	_memMutex = xSemaphoreCreateMutex();
+	assert(_memMutex != nullptr);
 
 	// BLE
 	_bleGap.Init();
@@ -49,7 +55,7 @@ void App::Init(const AppConfig & cfg)
 	    Ble::AdvertisementDataBuilder::Builder().SetCompleteUuid128(Gatt::ScannerService).Finish();
 	_bleGap.SetRawAdvertisingData(advData);
 
-	if (cfg.Mode != ScanMode::BleOnly) {
+	if (_cfg.Mode != ScanMode::BleOnly) {
 		// Don't initialize Classic if BLE only
 		_btGap.Init();
 		_btGap.SetScanMode(Gap::Bt::ConnectionMode::ESP_BT_NON_CONNECTABLE,
@@ -76,7 +82,11 @@ void App::GapBleScanResult(const Gap::Ble::ScanResult & p)
 	// Scan result - Found a device
 	const Bt::Device dev(p);
 	ESP_LOGD(TAG, "%s", ToString(dev).c_str());
-	_memory.AddDevice(dev);
+
+	if (xSemaphoreTake(_memMutex, BlockTimeInCallbacks)) {
+		_memory.AddDevice(dev);
+		xSemaphoreGive(_memMutex);
+	}
 
 	_CheckAndUpdateDevicesData();
 }
@@ -102,8 +112,13 @@ void App::GapBtDiscRes(const Gap::Bt::DiscRes & p)
 		return;
 	}
 
-	Bt::Device dev(p);
+	const Bt::Device dev(p);
 	ESP_LOGD(TAG, "%s", ToString(dev).c_str());
+
+	if (xSemaphoreTake(_memMutex, BlockTimeInCallbacks)) {
+		_memory.AddDevice(dev);
+		xSemaphoreGive(_memMutex);
+	}
 
 	_CheckAndUpdateDevicesData();
 }
@@ -151,6 +166,10 @@ void App::GattsDisconnect(const Gatts::Type::Disconnect & p)
 
 void App::GattsRead(const Gatts::Type::Read & p)
 {
+	if (p.handle != _appInfo->GattHandles[Handle::Devices]) {
+		return;
+	}
+
 	// Attributes are limited to 512 octets. That would limit us to 7 devices.
 	// To get around that, we can just keep shifting an offset and send some other
 	// data for each read request.
@@ -159,7 +178,6 @@ void App::GattsRead(const Gatts::Type::Read & p)
 	    std::min(512u, ((ESP_GATT_MAX_MTU_SIZE - 1) / Core::DeviceDataView::Size)
 	                       * Core::DeviceDataView::Size);
 
-	ESP_LOGD(TAG, "Read %d %d %d", p.is_long, p.need_rsp, p.offset);
 	_CheckAndUpdateDevicesData();
 
 	const std::size_t totalOffset = movingOffset + p.offset;
@@ -274,12 +292,13 @@ void App::_ScanForDevices()
 	// Scan forever
 	if (_cfg.Mode == ScanMode::Both) {
 		static bool swap = false;
-		const float time = static_cast<float>(_cfg.ScanModePeriod);
 		if (!swap) {
+			const float time = static_cast<float>(_cfg.ScanModePeriodBle);
 			_bleGap.StartScanning(time);
 			ESP_LOGI(TAG, "Scanning for devices (BLE)");
 		}
 		else {
+			const float time = static_cast<float>(_cfg.ScanModePeriodClassic);
 			_btGap.StartDiscovery(Gap::Bt::InquiryMode::ESP_BT_INQ_MODE_GENERAL_INQUIRY, time);
 			ESP_LOGI(TAG, "Scanning for devices (Classic)");
 		}
@@ -298,11 +317,10 @@ void App::_ScanForDevices()
 
 void App::_CheckAndUpdateDevicesData()
 {
-	constexpr std::int64_t MsToUpdate = 5'000;
 	const auto now = Clock::now();
 	const auto diff =
 	    std::chrono::duration_cast<std::chrono::milliseconds>(now - _lastDevicesUpdate).count();
-	if (diff > MsToUpdate) {
+	if (diff > _cfg.DevicesUpdateInterval) {
 		_lastDevicesUpdate = now;
 		_UpdateDevicesData();
 	}
@@ -310,7 +328,10 @@ void App::_CheckAndUpdateDevicesData()
 
 void App::_UpdateDevicesData()
 {
-	_memory.SerializeData(_serializeVec);
+	if (xSemaphoreTake(_memMutex, BlockTimeInCallbacks)) {
+		_memory.SerializeData(_serializeVec);
+		xSemaphoreGive(_memMutex);
+	}
 	// if (_serializeVec.size() > 0) {
 	//  Not even going to set the attribute value. Pointless, since we are responding to
 	//  reads/writes manually.

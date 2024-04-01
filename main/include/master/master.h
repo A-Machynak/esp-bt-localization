@@ -14,12 +14,13 @@ namespace Master
 class App
 {
 public:
-	App();
+	/// @brief Constructor.
+	/// @param cfg configuration
+	App(const AppConfig & cfg);
 	~App();
 
-	/// @brief Initialize with config.
-	/// @param cfg config
-	void Init(const AppConfig & cfg);
+	/// @brief Initialize.
+	void Init();
 
 private:
 	/// @brief Master application implementation

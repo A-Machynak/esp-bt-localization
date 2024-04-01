@@ -13,6 +13,8 @@
 #include "scanner/device_memory.h"
 #include "scanner/scanner_cfg.h"
 
+#include <freertos/semphr.h>
+
 namespace Scanner::Impl
 {
 
@@ -41,11 +43,11 @@ class App final
 {
 public:
 	/// @brief Constructor.
-	App();
+	App(const AppConfig & cfg);
 
 	/// @brief Initialize with configuration
 	/// @param cfg config
-	void Init(const AppConfig & cfg);
+	void Init();
 
 	/// @brief BLE GAP related callbacks
 	/// @{
@@ -77,15 +79,20 @@ private:
 	using TimePoint = std::chrono::time_point<Clock>;
 	/// @}
 
+	/// @brief GAP/GATTS
+	/// @{
 	Gap::Ble::Wrapper _bleGap;
 	Gap::Bt::Wrapper _btGap;
 	Gatts::Wrapper _gatts;
 	const Gatts::AppInfo * _appInfo;
+	/// @}
 
+	/// @brief State
 	Gatt::StateChar _state;
 
 	/// @brief Memory for storing devices
 	DeviceMemory _memory;
+	SemaphoreHandle_t _memMutex;
 
 	/// @brief Vector for serializing data
 	std::vector<std::uint8_t> _serializeVec;
@@ -106,7 +113,7 @@ private:
 	               0,
 	               Core::DeviceMemoryByteSize(),
 	               ESP_GATT_PERM_READ,
-	               ESP_GATT_RSP_BY_APP)  // We have to split bigger PDUs manually
+	               ESP_GATT_RSP_BY_APP)  // Using custom logic
 	        .Finish());
 
 	/// @brief Connection state
@@ -115,6 +122,8 @@ private:
 	/// @brief Last time the `Devices` GATT attribute was updated
 	TimePoint _lastDevicesUpdate = Clock::now();
 
+	/// @brief Changes state - start/stop advertising/scanning
+	/// @param state new state
 	void _ChangeState(const Gatt::StateChar state);
 
 	/// @brief Advertise/Scan

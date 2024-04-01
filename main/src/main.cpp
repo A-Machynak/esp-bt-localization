@@ -6,11 +6,43 @@
 #if defined(CONFIG_MASTER)
 	#define MAIN_TAG "Master"
 	#include "master/master.h"
-	static Master::App app;
+
+	Master::AppConfig cfg {
+	#if defined(CONFIG_WIFI_AS_AP)
+		.WifiCfg = Master::WifiConfig {
+			.Mode = Master::WifiOpMode::AP,
+			.Ssid = CONFIG_WIFI_SSID,
+			.Password = CONFIG_WIFI_PASSWORD,
+			.ApChannel = CONFIG_WIFI_CHANNEL,
+			.ApMaxConnections = CONFIG_WIFI_MAX_CONNECTIONS,
+		},
+	#elif defined(CONFIG_WIFI_AS_STA)
+		.WifiCfg = Master::WifiConfig {
+			.Mode = Master::WifiOpMode::STA,
+			.Ssid = CONFIG_WIFI_SSID,
+			.Password = CONFIG_WIFI_PASSWORD,
+		},
+	#endif
+	};
+
+	static Master::App app(cfg);
 #elif defined(CONFIG_SCANNER)
-	#include "scanner/scanner.h"
 	#define MAIN_TAG "Scanner"
-	static Scanner::App app;
+	#include "scanner/scanner.h"
+
+	Scanner::AppConfig cfg {
+	#if defined(CONFIG_SCANNER_SCAN_CLASSIC_ONLY)
+		.Mode = Scanner::ScanMode::ClassicOnly,
+	#elif defined(CONFIG_SCANNER_SCAN_BLE_ONLY)
+		.Mode = Scanner::ScanMode::BleOnly,
+	#else
+		.Mode = Scanner::ScanMode::Both,
+		.ScanModePeriodClassic = CONFIG_SCANNER_SCAN_BOTH_PERIOD_CLASSIC,
+		.ScanModePeriodBle = CONFIG_SCANNER_SCAN_BOTH_PERIOD_BLE,
+	#endif
+	};
+
+	static Scanner::App app(cfg);
 #else
 	#error "'MASTER' or 'SCANNER' isn't defined"
 #endif
@@ -24,36 +56,6 @@ extern "C" void app_main(void)
 	}
 	ESP_ERROR_CHECK(ret);
 
-	// Config
-	#if defined(CONFIG_MASTER)
-		Master::AppConfig cfg;
-		#if defined(CONFIG_WIFI_AS_AP)
-			cfg.WifiCfg = Master::WifiConfig {
-				.Mode = Master::WifiOpMode::AP,
-				.Ssid = CONFIG_WIFI_SSID,
-				.Password = CONFIG_WIFI_PASSWORD,
-				.ApChannel = CONFIG_WIFI_CHANNEL,
-				.ApMaxConnections = CONFIG_WIFI_MAX_CONNECTIONS,
-			};
-		#elif defined(CONFIG_WIFI_AS_STA)
-			cfg.WifiCfg = Master::WifiConfig {
-				.Mode = Master::WifiOpMode::STA,
-				.Ssid = CONFIG_WIFI_SSID,
-				.Password = CONFIG_WIFI_PASSWORD
-			};
-		#endif
-	#elif defined(CONFIG_SCANNER)
-		Scanner::AppConfig cfg;
-		#if defined(CONFIG_SCANNER_SCAN_CLASSIC_ONLY)
-			cfg.Mode = Scanner::ScanMode::ClassicOnly;
-		#elif defined(CONFIG_SCANNER_SCAN_BLE_ONLY)
-			cfg.Mode = Scanner::ScanMode::BleOnly;
-		#else
-			cfg.Mode = Scanner::ScanMode::Both;
-			cfg.ScanModePeriod = CONFIG_SCANNER_SCAN_BOTH_PERIOD;
-		#endif
-	#endif
-
-	app.Init(cfg);
+	app.Init();
 }
 // clang-format on

@@ -4,8 +4,8 @@
 namespace Scanner
 {
 
-App::App()
-    : _impl(new Impl::App)
+App::App(const AppConfig & cfg)
+    : _impl(new Impl::App(cfg))
 {
 }
 
@@ -14,9 +14,9 @@ App::~App()
 	delete _impl;
 }
 
-void App::Init(const AppConfig & cfg)
+void App::Init()
 {
-	_impl->Init(cfg);
+	_impl->Init();
 }
 
 }  // namespace Scanner

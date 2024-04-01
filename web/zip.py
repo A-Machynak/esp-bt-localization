@@ -3,15 +3,19 @@ import os, sys, subprocess, gzip, argparse
 dir_path = os.path.dirname(os.path.realpath(__file__)).replace("\\", "/")
 
 parser = argparse.ArgumentParser(prog="zip", description="Compresses an html and js file and embeds the js file into the html file")
-parser.add_argument("html_min_file", nargs="?", default=dir_path + "/visualize.min.html")
-parser.add_argument("js_min_file", nargs="?", default=dir_path + "/visualize.min.js")
-parser.add_argument("html_file", help="Used for --automatic", nargs="?", default=dir_path + "/visualize.html")
-parser.add_argument("js_file", help="Used for --automatic", nargs="?", default=dir_path + "/visualize.js")
-parser.add_argument("out_file", nargs="?", default="compressed.h")
+parser.add_argument("--html_min_file", default=dir_path + "/visualize.min.html")
+parser.add_argument("--js_min_file", default=dir_path + "/visualize.min.js")
+parser.add_argument("--html_file", help="Used for --automatic", default=dir_path + "/visualize.html")
+parser.add_argument("--js_file", help="Used for --automatic", default=dir_path + "/visualize.js")
+parser.add_argument("--out_file", default="compressed.h")
 parser.add_argument("-a", "--automatic",
 					help="Executes html-minifier and google-closure-compiler to minify html_file and js_file",
 					action=argparse.BooleanOptionalAction,
 					default=False)
+parser.add_argument("-c", "--compression",
+					help="Whether to compress or only minify and embed the JS. For testing.",
+					action=argparse.BooleanOptionalAction,
+					default=True)
 args = parser.parse_args()
 
 # Read
@@ -57,15 +61,22 @@ if idx == -1:
 	idx = len(content_html)
 content = content_html[:idx] + "<script>" + content_js + "</script>" + content_html[idx:]
 
-# Compress
-compressed = gzip.compress(content.encode("ascii"))
-with open(args.out_file, "w") as f:
-	f.write("#pragma once\n\n")
-	f.write("#include <array>\n\n")
-	f.write("/// Compressed index page.\n")
-	f.write("static const std::array IndexPageGzip = std::to_array<char>({ ")
-	for byte in compressed:
-		f.write(f"0x{byte:02x}, ")
-	f.write("});\n")
+if args.compression:
+	# Compress
+	compressed = gzip.compress(content.encode("ascii"))
+	with open(args.out_file, "w") as f:
+		f.write("#pragma once\n\n")
+		f.write("#include <array>\n\n")
+		f.write("/// Compressed index page.\n")
+		f.write("static const std::array IndexPageGzip = std::to_array<char>({ ")
+		for byte in compressed:
+			f.write(f"0x{byte:02x}, ")
+		f.write("});\n")
+		print(f"Saved into \"{args.out_file}\"")
+		print(f"Original size: {len(content)}; Compressed size: {len(compressed)}")
+else:
+	# Only output
+	with open(args.out_file, "w") as f:
+		f.write(content)
 	print(f"Saved into \"{args.out_file}\"")
-	print(f"Original size: {len(content)}; Compressed size: {len(compressed)}")
+	print(f"Size: {len(content)}")

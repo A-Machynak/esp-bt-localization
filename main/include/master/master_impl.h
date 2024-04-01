@@ -33,11 +33,11 @@ class App final
 {
 public:
 	/// @brief Constructor
-	App();
+	App(const AppConfig & cfg);
 
 	/// @brief Initialize with configuration
 	/// @param config config
-	void Init(const AppConfig & config);
+	void Init();
 
 	/// @brief BLE GAP related callbacks
 	/// @{
@@ -65,10 +65,16 @@ public:
 	void UpdateDeviceDataLoop();
 
 private:
+	/// @brief Configuration
+	AppConfig _cfg;
+
+	/// @brief GAP/GATTc/HTTP
+	/// @{
 	Gap::Ble::Wrapper _bleGap;         ///< BLE GAP
 	Gattc::Wrapper _gattc;             ///< GATTc
 	const Gattc::AppInfo * _gattcApp;  ///< GATTc Application info
 	::Master::HttpServer _httpServer;
+	/// @}
 
 	/// @brief Temporary storage
 	/// @{
@@ -76,10 +82,9 @@ private:
 	std::vector<std::uint8_t> _tmpSerializedData;
 	/// @}
 
-	SemaphoreHandle_t _memMutex;
-
 	/// @brief Stored scanners and devices' data
 	DeviceMemory _memory;
+	SemaphoreHandle_t _memMutex;
 
 	/// @brief BDA of a scanner that we want to connect to.
 	/// Since we have to wait for BLE scan to stop before connecting,

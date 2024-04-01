@@ -56,7 +56,7 @@ void AttributeTable::Value(std::string_view uuid128,
 	                       .att_desc = {.uuid_length = ESP_UUID_LEN_128,
 	                                    .uuid_p = Uuids.back()->data(),
 	                                    .perm = permissions,
-	                                    .max_length = maxLength,
+	                                    .max_length = std::min(maxLength, (std::uint16_t)512),
 	                                    .length = length,
 	                                    .value = Attributes.back()->data()}};
 	Db.push_back(db);

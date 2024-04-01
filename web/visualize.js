@@ -58,15 +58,25 @@ function UpdateEntities() {
 // Dynamic draw - mouseover. Doesn't need to clear entities.
 function RedrawDynamic() {
 	const ctx = canvasDynamicCtx;
+	const fontSize = 18;
 	ctx.clearRect(0, 0, canvasDynamic.width, canvasDynamic.height);
-
+	ctx.font = `${fontSize}px Georgia`;
+	
 	// { Bda, X, Y, Z, IsScanner, IsBle, IsAddrTypePublic }
+	var row = 1;
+	const topLeftX = 800 + 5;
 	for (var e of entities) {
 		const realCoord = ToCanvasCoordinates(e.X, e.Y);
 		const realX = realCoord[0];
 		const realY = realCoord[1];
 		if (IsInRange(mouseX, mouseY, realX, realY)) {
-			// Show tooltip
+			// Show some detailed information
+			ctx.fillText(e.IsScanner ? "Scanner" : "Device", topLeftX, row++ * (fontSize + 2), 200);
+			ctx.fillText(BdaToString(e.Bda), topLeftX, row++ * (fontSize + 2), 200);
+			ctx.fillText(`(${e.X}, ${e.Y}, ${e.Z})`, topLeftX, row++ * (fontSize + 2), 200);
+			ctx.fillText(`${e.IsBle ? "BLE " : "BT "} ${e.IsAddrTypePublic ? "Public " : "Random "} ${e.ScannerCount}`,
+				topLeftX, row++ * (fontSize + 2), 200);
+			row++;
 		}
 	}
 }
@@ -209,9 +219,9 @@ function BdaToString(bda) {
 		+ ByteToHex(bda[3]) + ":" + ByteToHex(bda[4]) + ":" + ByteToHex(bda[5]);
 }
 function EntityToString(dict) {
-	return (dict.IsScanner ?
-		`Scanner [${BdaToString(dict.Bda)}]: (${dict.X}, ${dict.Y}, ${dict.Z})` :
-		`Device [${BdaToString(dict.Bda)}]: (${dict.X}, ${dict.Y}, ${dict.Z}), ` +
-		`(${dict.IsBle ? "BLE" : "BT"}, ${dict.IsAddrTypePublic ? "Public" : "Random"})`)
+	return `${dict.IsScanner ? "Scanner" : "Device"}`
+		+ `[${BdaToString(dict.Bda)}]:`
+		+ `(${dict.X}, ${dict.Y}, ${dict.Z}), `
+		+ `(${dict.IsBle ? "BLE" : "BT"}, ${dict.IsAddrTypePublic ? "Public" : "Random"}, ${dict.ScannerCount})`
 		+ "\n";
 }
