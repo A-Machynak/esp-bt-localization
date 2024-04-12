@@ -2,6 +2,7 @@
 
 #include "master/http/server_cfg.h"
 
+#include <functional>
 #include <span>
 
 namespace Master::Impl
@@ -12,7 +13,7 @@ class HttpServer;
 namespace Master
 {
 
-/// @brief Basic HTTP server for Master device with 2 endpoints (GetIndexUri, GetDevicesUri).
+/// @brief Basic HTTP server for Master device with 3 endpoints (IndexUri, DevicesUri, ConfigUri).
 class HttpServer
 {
 public:
@@ -24,9 +25,13 @@ public:
 	/// @param config config
 	void Init(const WifiConfig & config);
 
-	/// @brief Set the data returned from API endpoint
+	/// @brief Set the data returned from DevicesUri endpoint (GET)
 	/// @param data raw data
-	void SetRawData(std::span<const char> data);
+	void SetDevicesGetData(std::span<const char> data);
+
+	/// @brief Listener for ConfigUri POST request
+	/// @param fn function
+	void SetConfigPostListener(std::function<void(std::span<const char>)> fn);
 
 private:
 	Impl::HttpServer * _impl;

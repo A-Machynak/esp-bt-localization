@@ -3,10 +3,15 @@
 #include "core/bt_common.h"
 #include "core/device_data.h"
 #include "core/gatt_common.h"
+#include "core/utility/common.h"
 #include "core/utility/uuid.h"
+#include "master/http/api/post_data.h"
+#include "master/nvs_utils.h"
+#include "master/system_msg.h"
 
 #include <esp_bt.h>
 #include <esp_log.h>
+#include <esp_system.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/FreeRTOSConfig.h>
 #include <freertos/projdefs.h>
@@ -52,7 +57,7 @@ void App::Init()
 	// Reserve enough space, otherwise BTC will run out of it while allocating it himself for
 	// some reason
 	_tmpSerializedData.reserve(Core::DeviceDataView::Size * 128);
-	_tmpScanners.reserve(2);
+	_tmpScanners.reserve(10);
 
 	// Mutex for DeviceMemory
 	_memMutex = xSemaphoreCreateMutex();
@@ -89,6 +94,30 @@ void App::Init()
 
 	// Finally, initialize http server
 	_httpServer.Init(_cfg.WifiCfg);
+	_httpServer.SetConfigPostListener(
+	    [&](std::span<const char> data) { OnHttpServerUpdate(data); });
+}
+
+void App::OnHttpServerUpdate(std::span<const char> data)
+{
+	// Update from http server
+	const std::span span(reinterpret_cast<const std::uint8_t *>(data.data()), data.size());
+	auto view = HttpApi::DevicesPostDataView(span);
+
+	for (auto v = view.Next(); !std::holds_alternative<std::monostate>(v); v = view.Next()) {
+		std::visit(
+		    // Don't implement auto so we get a compile time error if an implementation is missing
+		    Overload{
+		        [&](const HttpApi::Type::SystemMsg & t) { ProcessSystemMessage(t.Value()); },
+		        [&](const HttpApi::Type::RefPathLoss & t) {
+			        Nvs::SetRefPathLoss(t.Mac(), t.Value());
+		        },
+		        [&](const HttpApi::Type::EnvFactor & t) { Nvs::SetEnvFactor(t.Mac(), t.Value()); },
+		        [&](const HttpApi::Type::MacName & t) { Nvs::SetMacName(t.Mac(), t.Value()); },
+		        [&](std::monostate t) {},
+		    },
+		    v);
+	}
 }
 
 void App::GapBleScanResult(const Gap::Ble::Type::ScanResult & p)
@@ -153,8 +182,6 @@ void App::GattcOpen(const Gattc::Type::Open & p)
 		_ScanForScanners();
 		return;
 	}
-	// Set MTU
-	esp_ble_gattc_send_mtu_req(_gattcApp->GattIf, p.conn_id);
 
 	// Save; this needs to be done in several steps, since we have to read characteristic handles,
 	// etc.
@@ -386,8 +413,13 @@ void App::UpdateDeviceDataLoop()
 		std::uint16_t DeviceCharHandle;
 	};
 
-	std::vector<ReadCharData> readCharData;
+	static std::vector<ReadCharData> readCharData;
+	readCharData.reserve(10);
+
 	for (;;) {
+		ESP_LOGI(TAG, "free %lu internal %lu min %lu", esp_get_free_heap_size(),
+		         esp_get_free_internal_heap_size(), esp_get_minimum_free_heap_size());
+
 		// First make a copy of each scanner's connection id and handle
 		if (xSemaphoreTake(_memMutex, portMAX_DELAY)) {
 			const auto & scanners = _memory.GetScanners();  // Read
@@ -420,13 +452,13 @@ void App::UpdateDeviceDataLoop()
 		if (size != 0) {
 			// Small delay in case it took too long
 			vTaskDelay(DelayBetweenReads / 2);
-			if (xSemaphoreTake(_memMutex, portMAX_DELAY) == pdTRUE) {
+			if (xSemaphoreTake(_memMutex, portMAX_DELAY)) {
 				// Serialize
 				const std::span<std::uint8_t> rawData = _memory.SerializeOutput();  // Read
 				xSemaphoreGive(_memMutex);
 
 				// and finally update the HTTP server data
-				_httpServer.SetRawData(
+				_httpServer.SetDevicesGetData(
 				    std::span(reinterpret_cast<char *>(rawData.data()), rawData.size()));
 			}
 			else {
@@ -468,7 +500,11 @@ void App::_ScanForScanners()
 	// setting the params if necessary.
 	static bool InitState = false;
 
-	const std::size_t connected = _memory.GetScanners().size();
+	std::size_t connected = 4;
+	if (xSemaphoreTake(_memMutex, portMAX_DELAY)) {
+		connected = _memory.GetScanners().size();
+		xSemaphoreGive(_memMutex);
+	}
 	if (connected >= 4 && InitState) {
 		InitState = false;
 		esp_ble_scan_params_t scanParams{

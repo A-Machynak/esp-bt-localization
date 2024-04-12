@@ -41,13 +41,25 @@ For Wifi, either AP (creates an access point) or STA (connects to an existing on
 
 The project has been tested on the following devices:
 
-- ESP32-WROOM32 - Master, Scanner (BT+BLE)
+- ESP32-WROOM-32 - Master, Scanner (BT+BLE)
+	- Deemed unsuitable - high path loss variance, reference path loss at 50 to 70
 - ESP32-C3(-MINI-1) - Master, Scanner (BLE)
+	- More suitable - much smaller path loss variance, reference path loss at 36 to 39
 
 ## Configuration
 
 KConfig (`main/Kconfig.projbuild`) is used for configuration.
 Use idf `menuconfig` command or edit `sdkconfig.*` to configure it.
+
+### Reference path loss/environment factor
+
+Depending on the device, a different reference path loss might be used.
+This value represents the path loss at a 1 meter distance and it is usually around 40 to 60.
+
+Depending on the environment, a different environment factor might be used.
+This value represents the 
+
+Together, these 2 are the parameters for a Log Distance Path Loss function used to calculate the distances.
 
 ## Build, Configure & Flash
 
@@ -83,32 +95,58 @@ google-closure-compiler -O ADVANCED --js web/visualize.js --js_output_file web/v
 html-minifier --collapse-whitespace --remove-comments --remove-optional-tags --remove-redundant-attributes --remove-script-type-attributes --remove-tag-whitespace web/visualize.html -o web/visualize.min.html
 ```
 
-After that, run the `web/zip.py` to embed the js into html (inserted before `</body>`), compress it and output into `compressed.h`.
+After that, run the `web/zip.py` to embed the js into html (it'll be inserted before `</body>` or at the end, if not found), compress it and output into `compressed.h`.
 Alternatively, the python script can be used to run the minifiers automatically and compress everything at once (`-a` flag).
 Finally, copy the file's content into `index_page.h`.
 
 The file doesn't need to be minified and can be simply compressed:
 ```sh
-python zip.py visualize.html visualize.js
+python zip.py --html_min_file visualize.html --js_min_file visualize.js
 ```
 *However*, minifying it will reduce the file size drastically.
 
 <hr>
 
 Custom visualization can be made using the `/api/devices` endpoint.
-This endpoint returns an array of elements with 20 bytes per element with the following format (`type:name[size]`):
+Sending GET request on this endpoint returns an array of elements with 20 bytes per element.
 
-`uint8:BDA[6]` `float:xyz[3]` `uint8:scannerCount[1]` `uint8:flags[1]`
+`GET /api/devices`
+
+| Type/Size[B] | Name          |
+| ------------ | ------------- |
+| uint8/6      | BDA           |
+| float/3      | (x, y, z)     |
+| uint8/1      | Scanner count |
+| uint8/1      | Flags         |
 
 ... assuming `float` is 4 bytes.
 `scannerCount` represents the amount of scanner measurements that were used to approximate this device's position.
 For `flags`, only the first 3 (lowest) bits are used and they represent the following:
 
-|Bit|Info|
-|---|----|
-|0|Is this device a scanner?|
-|1|Is this a BLE device? (Scanners can use BT Classic)|
-|2|Is this device's address public? (Can be random)|
+| Bit | Info                                                |
+| --- | --------------------------------------------------- |
+| 0   | Is this device a scanner?                           |
+| 1   | Is this a BLE device? (Scanners can use BT Classic) |
+| 2   | Is this device's address public? (Can be random)    |
+
+<hr>
+
+POST requests expect raw bytes in the format `[Type0][Data0][Type1][Data1]...`, where type is one of {`0`, `1`, `2`}:
+
+`POST /api/config`
+
+| Type | Name                   | Expected data                         |
+| ---- | ---------------------- | ------------------------------------- |
+| 0    | System message         | 1B - type of message                  |
+| 1    | Set reference RSSI     | 6B (MAC) + 1B (RSSI, `int8`)          |
+| 2    | Set environment factor | 6B (MAC) + 4B (EnvFactor, `float`)    |
+| 3    | Map MAC to a name      | 6B (MAC) + up to 16B (name, `string`) |
+
+`System message types`
+| Type | Name            | Description      |
+| ---- | --------------- | ---------------- |
+| 0    | Restart         | Restarts the ESP |
+
 
 ### Structure
 - `core/` - wrappers over Bluetooth/WiFi API and data common for both Master and Scanner

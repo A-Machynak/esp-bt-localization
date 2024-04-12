@@ -144,7 +144,7 @@ void App::GattsConnect(const Gatts::Type::Connect & p)
 	// GATTs connect - connected to Master
 	if (_connStatus == ConnectionStatus::Connected) {
 		// Only a single connection is allowed
-		esp_ble_gatts_close(_appInfo->GattIf, p.conn_id);
+		_gatts.Close(_appInfo->AppId, p.conn_id);
 		_AdvertiseDefault();
 	}
 	else {

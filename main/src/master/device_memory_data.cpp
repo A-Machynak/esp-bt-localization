@@ -5,6 +5,11 @@
 namespace Master
 {
 
+std::int64_t DeltaMs(const TimePoint & before, const TimePoint & after)
+{
+	return std::chrono::duration_cast<std::chrono::milliseconds>(after - before).count();
+}
+
 MeasurementData::MeasurementData(std::size_t scannerIdx, std::int8_t rssi)
     : ScannerIdx(scannerIdx)
     , Rssi(rssi)
@@ -18,6 +23,7 @@ DeviceMeasurements::DeviceMeasurements(const Mac & bda,
     : Info({bda, isBle, isPublic})
     , Data({firstMeasurement})
     , Position{InvalidPos, InvalidPos, InvalidPos}
+    , LastUpdate(Clock::now())
 {
 }
 
@@ -25,11 +31,6 @@ ScannerDetail::ScannerDetail(const ScannerInfo & info)
     : Info(info)
     , LastUpdate(Clock::now())
 {
-}
-
-std::int64_t ScannerDetail::DeltaNow(const TimePoint & tp)
-{
-	return std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - tp).count();
 }
 
 void DeviceOut::Serialize(std::span<std::uint8_t, Size> output) const

@@ -1,6 +1,7 @@
 #include "master/device_memory.h"
 
 #include "core/device_data.h"
+#include "master/nvs_utils.h"
 #include "math/minimizer/functions/anchor_distance.h"
 #include "math/minimizer/functions/point_to_anchors.h"
 #include "math/minimizer/gradient_minimizer.h"
@@ -21,7 +22,10 @@ namespace Master
 
 DeviceMemory::DeviceMemory()
 {
-	_serializedData.reserve(128 * 19);
+	_serializedData.reserve(128 * 20);
+	_scannerRssis.Reserve(10 * 10);
+	_scannerDistances.Reserve(10 * 10);
+	_scannerPositions.Reserve(10 * 10);
 }
 
 void DeviceMemory::AddScanner(const ScannerInfo & scanner)
@@ -43,6 +47,7 @@ void DeviceMemory::AddScanner(const ScannerInfo & scanner)
 		const std::size_t newIdx = _scanners.size() - 1;
 		_scannerMap.emplace(scanner.Bda, newIdx);
 		_scannerDistances.Reshape(_scanners.size(), _scanners.size());
+		_scannerRssis.Reshape(_scanners.size(), _scanners.size());
 
 		auto scDev = _deviceMap.find(scanner.Bda);
 		if (scDev != _deviceMap.end()) {
@@ -89,8 +94,8 @@ std::size_t DeviceMemory::GetScannerIdxToAdvertise() const
 {
 	for (std::size_t i = 0; i < _scanners.size(); i++) {
 		for (std::size_t j = i + 1; j < _scanners.size(); j++) {
-			if (_scannerDistances(i, j) == 0.0) {
-				// Scanner distance between i-j is missing; return at least one
+			if (_scannerRssis(i, j) == 0) {
+				// Scanner RSSI between i-j is missing; return at least one
 				return i;
 			}
 		}
@@ -130,7 +135,7 @@ bool DeviceMemory::ShouldAdvertise(ScannerIdx idx)
 
 	// Go through each scanner and check if it's missing this scanner's bda
 	for (std::size_t i = 0; i < _scanners.size(); i++) {
-		if (i != idx && _scannerDistances(i, idx) == 0.0) {
+		if (i != idx && _scannerRssis(i, idx) == 0) {
 			return true;
 		}
 	}
@@ -163,7 +168,7 @@ const Math::Matrix<float> * DeviceMemory::UpdateScannerPositions()
 		auto & scanner = _scanners.at(i);
 		scanner.UsedMeasurements = 0;
 		for (std::size_t j = 0; i < _scanners.size(); i++) {
-			if ((i != j) && _scannerDistances(i, j) != 0.0) {
+			if ((i != j) && _scannerRssis(i, j) != 0) {
 				scanner.UsedMeasurements++;
 			}
 		}
@@ -182,6 +187,8 @@ const Math::Matrix<float> * DeviceMemory::UpdateScannerPositions()
 
 const std::vector<DeviceMeasurements> & DeviceMemory::UpdateDevicePositions()
 {
+	_RemoveStaleDevices();
+
 	if (!_scannerPositionsSet) {
 		if (!UpdateScannerPositions()) {  // Maybe user didn't update it?
 			return _devices;              // - Nope, can't calculate
@@ -200,7 +207,11 @@ const std::vector<DeviceMeasurements> & DeviceMemory::UpdateDevicePositions()
 
 		// Save distances
 		for (auto & m : meas.Data) {
-			tmpDist.at(m.ScannerIdx) = PathLoss::LogDistance(m.Rssi);
+			auto v = Nvs::Cache::Instance().GetValues(meas.Info.Bda.Addr);
+			const auto refPathLoss = v.RefPathLoss.value_or(PathLoss::DefaultRefPathLoss);
+			const auto envFactor = v.EnvFactor.value_or(PathLoss::DefaultEnvFactor);
+
+			tmpDist.at(m.ScannerIdx) = PathLoss::LogDistance(m.Rssi, envFactor, refPathLoss);
 		}
 
 		std::span pos = meas.Position;
@@ -237,7 +248,7 @@ std::span<std::uint8_t> DeviceMemory::SerializeOutput()
 		const std::span<std::uint8_t, DeviceOut::Size> out(_serializedData.data() + offset,
 		                                                   DeviceOut::Size);
 		const std::span<const std::uint8_t, 6> bda(scan.Info.Bda.Addr);
-		const std::span<const float, 3> pos(_scannerPositions.Row(i));
+		const std::span<const float, Dimensions> pos(_scannerPositions.Row(i));
 		DeviceOut::Serialize(out, bda, pos, scan.UsedMeasurements, true, true, true);
 
 		offset += DeviceOut::Size;
@@ -322,20 +333,31 @@ void DeviceMemory::_UpdateDevice(std::size_t scannerIdx, std::size_t devIdx, std
 
 void DeviceMemory::_UpdateScanner(std::size_t sIdx1, std::size_t sIdx2, std::int8_t rssi)
 {
-	const float dist = PathLoss::LogDistance(rssi);
 	_scannerPositionsSet = false;
 
 	// Look up if measurement already exists
-	if (_scannerDistances(sIdx1, sIdx2) != 0.0) {
+	if (_scannerRssis(sIdx1, sIdx2) != 0) {
 		// Measurement exists, update
-		_scannerDistances(sIdx1, sIdx2) = (_scannerDistances(sIdx1, sIdx2) + dist) / 2;
+		_scannerRssis(sIdx1, sIdx2) = (_scannerRssis(sIdx1, sIdx2) + rssi) / 2;
 	}
 	else {
 		// First measurement
-		_scannerDistances(sIdx1, sIdx2) = dist;
+		_scannerRssis(sIdx1, sIdx2) = rssi;
 	}
-	_scannerDistances(sIdx2, sIdx1) = dist;  // Symmetric
-	ESP_LOGI(TAG, "Scanner distance [%d-%d]: %d (= %.2f)", sIdx1, sIdx2, rssi, dist);
+
+	auto v = Nvs::Cache::Instance().GetValues(_scanners[sIdx1].Info.Bda.Addr);
+	const std::int8_t refPathLoss = v.RefPathLoss.value_or(PathLoss::DefaultRefPathLoss);
+	const float envFactor = v.EnvFactor.value_or(PathLoss::DefaultEnvFactor);
+	const std::int8_t rssiVal = _scannerRssis(sIdx1, sIdx2);
+
+	// Scanner distances should be symmetric but...setting different ref path loss/env factor per
+	// scanner makes this kinda problematic, since the distances might be very different.
+	// Since AnchorDistance3D only uses the upper triangular part of the matrix, we will just leave
+	// it as it is for now - ignore the lower triangular part.
+	_scannerDistances(sIdx1, sIdx2) = PathLoss::LogDistance(rssiVal, envFactor, refPathLoss);
+	ESP_LOGI(TAG,
+	         "Scanner distance [%d-%d]: Rssi: %d, Dist: %.2f, RefPathLoss: %d, EnvFactor: %.2f",
+	         sIdx1, sIdx2, rssiVal, _scannerDistances(sIdx1, sIdx2), refPathLoss, envFactor);
 }
 
 void DeviceMemory::_RemoveScanner(std::size_t scannerIdx)
@@ -349,14 +371,20 @@ void DeviceMemory::_RemoveScanner(std::size_t scannerIdx)
 	// Remove device measurements with this index
 	_RemoveDeviceMeasurements(scannerIdx);
 
-	// Remove from scanner distances - shift and reshape
+	// Remove from scanner distances - shift and reshape.
+	// Shifts everything towards the empty column/row, which gets created by removing this scanner.
 	const std::size_t size = _scannerDistances.Rows();  // (Symmetric)
 	for (std::size_t i = scannerIdx + 1; i < size; i++) {
 		for (std::size_t j = 0; j < size; j++) {
-			_scannerDistances(i, j) = _scannerDistances(j, i) = _scannerDistances(i - 1, j);
+			_scannerDistances(i, j) = _scannerDistances(i - 1, j);
+			_scannerDistances(j, i) = _scannerDistances(i, j - 1);
+
+			_scannerRssis(i, j) = _scannerRssis(i - 1, j);
+			_scannerRssis(j, i) = _scannerRssis(i, j - 1);
 		}
 	}
 	_scannerDistances.Reshape(size - 1, size - 1);
+	_scannerRssis.Reshape(size - 1, size - 1);
 
 	UpdateScannerPositions();
 }
@@ -371,8 +399,22 @@ void DeviceMemory::_RemoveDeviceMeasurements(std::size_t scannerIdx)
 	}
 }
 
+void DeviceMemory::_RemoveStaleDevices()
+{
+	const TimePoint now = Clock::now();  // just calculate it once
+
+	std::erase_if(_devices, [&](const DeviceMeasurements & dev) {
+		if (DeltaMs(dev.LastUpdate, now) > DeviceRemoveTimeMs) {
+			_deviceMap.erase(dev.Info.Bda);
+			return true;
+		}
+		return false;
+	});
+}
+
 void DeviceMemory::_UpdateScannerCenter()
 {
+	// Calculate the average
 	std::fill(_scannerCenter.begin(), _scannerCenter.end(), 0.0);
 	for (std::size_t i = 0; i < _scannerPositions.Rows(); i++) {
 		for (std::size_t dim = 0; dim < _scannerCenter.size(); dim++) {

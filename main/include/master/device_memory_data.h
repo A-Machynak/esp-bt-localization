@@ -16,6 +16,12 @@ namespace Master
 using Clock = std::chrono::system_clock;
 using TimePoint = std::chrono::time_point<Clock>;
 
+/// @brief Calculates (after - before)
+/// @param before first time point (ex. past)
+/// @param after second time point (ex. now)
+/// @return difference in milliseconds
+std::int64_t DeltaMs(const TimePoint & before, const TimePoint & after = Clock::now());
+
 /// @brief Single scanner
 struct ScannerInfo
 {
@@ -46,11 +52,6 @@ struct ScannerDetail
 	/// @brief How many other scanners' measurements were used to approximate this
 	/// scanner's position
 	std::uint8_t UsedMeasurements{0};
-
-	/// @brief Calculates (Now - tp)
-	/// @param tp time point
-	/// @return milliseconds since tp
-	static std::int64_t DeltaNow(const TimePoint & tp);
 };
 
 /// @brief Measurement data for a device
@@ -88,6 +89,7 @@ struct DeviceMeasurements
 	DeviceInfo Info;                    ///< Device info
 	std::vector<MeasurementData> Data;  ///< Measurements from scanners
 	std::array<float, 3> Position;      ///< Resolved position (possibly invalid)
+	TimePoint LastUpdate;               ///< Last time a measurement was received
 
 	static constexpr float InvalidPos = std::numeric_limits<float>::max();
 	inline bool IsInvalidPos() const { return Position[0] == InvalidPos; }

@@ -7,7 +7,6 @@
 #include <span>
 #include <vector>
 
-
 namespace Math
 {
 
@@ -82,6 +81,10 @@ public:
 	/// @brief Fill the matrix with value
 	/// @param value value
 	void Fill(const T & value);
+
+	/// @brief Reserve for N values
+	/// @param size size
+	void Reserve(std::size_t size);
 
 private:
 	std::vector<T> _data;

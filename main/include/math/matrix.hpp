@@ -26,6 +26,7 @@ Matrix<T>::Matrix()
     : _rows(0)
     , _cols(0)
 {
+	_data.reserve(1);
 }
 
 template <typename T>
@@ -212,6 +213,12 @@ template <typename T>
 void Matrix<T>::Fill(const T & value)
 {
 	std::fill(_data.begin(), _data.end(), value);
+}
+
+template <typename T>
+void Matrix<T>::Reserve(std::size_t size)
+{
+	_data.reserve(size);
 }
 
 }  // namespace Math

@@ -16,14 +16,17 @@
 namespace
 {
 
-/// Dimension count
+/// @brief Dimension count
 constexpr std::size_t Dimensions = 3;
 
-/// Minimum amount of device measurements to try calculating the device position
+/// @brief Minimum amount of device measurements to try calculating the device position
 constexpr std::size_t MinimumMeasurements = 2;
 
-/// Minimum amount of scanners to calculate their relative positions
+/// @brief Minimum amount of scanners to calculate their relative positions
 constexpr std::size_t MinimumScanners = 2;
+
+/// @brief How long before a device gets removed if it doens't receive a measurement. [ms]
+constexpr std::int64_t DeviceRemoveTimeMs = 60'000;
 
 }  // namespace
 
@@ -64,7 +67,7 @@ public:
 	/// @brief Tries to find a scanner, which is missing a distance information in another
 	/// scanner and therefore should start advertising. Returns only a single scanner
 	/// (since we can't update more at the same time).
-	/// @return Scanner information or nullptr, if no scanners are required to advertise
+	/// @return Scanner information or InvalidScannerIdx, if no scanners are required to advertise
 	ScannerIdx GetScannerIdxToAdvertise() const;
 
 	/// @brief Remove scanner
@@ -73,7 +76,7 @@ public:
 
 	/// @brief Checks whether this device is an already connected scanner and returns it
 	/// @param bda address
-	/// @return scanner or nullptr, if it isn't a connected scanner
+	/// @return scanner index or InvalidScannerIdx if not found
 	ScannerIdx GetConnectedScannerIdx(const Bt::Device & dev) const;
 
 	/// @brief Whether or not a scanner should start advertising - that is, another scanner
@@ -103,6 +106,8 @@ public:
 	const std::vector<ScannerDetail> & GetScanners() const;
 
 private:
+	/// @brief RSSIs before being converted to distances - NxN symmetric matrix.
+	Math::Matrix<std::int8_t> _scannerRssis;
 	/// @brief Scanner distances - NxN symmetric matrix.
 	Math::Matrix<float> _scannerDistances;
 	/// @brief Resolved scanner positions
@@ -110,7 +115,7 @@ private:
 	bool _scannerPositionsSet = false;
 
 	/// @brief Used as an initial guess for devices
-	std::array<float, 3> _scannerCenter{0.0, 0.0, 0.0};
+	std::array<float, Dimensions> _scannerCenter{0.0};
 
 	/// Connected scanners, devices and maps for BDA lookup.
 	/// @{
@@ -148,6 +153,10 @@ private:
 	/// @param scannerIdx index to _scanners
 	void _RemoveDeviceMeasurements(std::size_t scannerIdx);
 
+	/// @brief Remove old devices.
+	void _RemoveStaleDevices();
+
+	/// @brief Update center of the scanners.
 	void _UpdateScannerCenter();
 };
 

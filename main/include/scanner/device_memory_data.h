@@ -40,8 +40,12 @@ public:
 	/// @param[out] output output destination
 	void Serialize(std::span<std::uint8_t, Core::DeviceDataView::Size> output) const;
 
+	/// @brief Data getter
+	/// @return device data
 	const Core::DeviceData & GetDeviceData() const;
 
+	/// @brief Last update time point
+	/// @return time point
 	const TimePoint & GetLastUpdate() const;
 
 private:

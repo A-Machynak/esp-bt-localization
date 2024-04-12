@@ -5,6 +5,7 @@
 #include "master/http/index_page.h"
 
 #include <algorithm>
+#include <functional>
 
 #include <esp_event.h>
 #include <esp_netif.h>
@@ -77,13 +78,11 @@ void WifiHandlerPassthrough(void * arg,
 	reinterpret_cast<Master::Impl::HttpServer *>(arg)->WifiHandler(eventBase, eventId, eventData);
 }
 
-esp_err_t GetIndexHandlerPassthrough(httpd_req_t * r)
+/// generic passthrough for URI handlers; even I am a bit disgusted
+template <esp_err_t (Master::Impl::HttpServer::*Fn)(httpd_req_t *)>
+esp_err_t HandlerPassthrough(httpd_req_t * r)
 {
-	return reinterpret_cast<Master::Impl::HttpServer *>(r->user_ctx)->GetIndexHandler(r);
-}
-esp_err_t GetDevicesHandlerPassthrough(httpd_req_t * r)
-{
-	return reinterpret_cast<Master::Impl::HttpServer *>(r->user_ctx)->GetDevicesHandler(r);
+	return (reinterpret_cast<Master::Impl::HttpServer *>(r->user_ctx)->*Fn)(r);
 }
 }  // namespace
 
@@ -104,13 +103,6 @@ void HttpServer::Init(const WifiConfig & config)
 	_InitHttp();
 }
 
-esp_err_t HttpServer::GetDevicesHandler(httpd_req_t * r)
-{
-	httpd_resp_set_type(r, "text/plain");
-	httpd_resp_send(r, _rawData.data(), _rawData.size());
-	return ESP_OK;
-}
-
 esp_err_t HttpServer::GetIndexHandler(httpd_req_t * r)
 {
 	httpd_resp_set_type(r, "text/html");
@@ -119,11 +111,46 @@ esp_err_t HttpServer::GetIndexHandler(httpd_req_t * r)
 	return ESP_OK;
 }
 
-void HttpServer::SetRawData(std::span<const char> data)
+esp_err_t HttpServer::GetDevicesHandler(httpd_req_t * r)
+{
+	httpd_resp_set_type(r, "text/plain");
+	httpd_resp_send(r, _rawData.data(), _rawData.size());
+	return ESP_OK;
+}
+
+esp_err_t HttpServer::PostConfigHandler(httpd_req_t * r)
+{
+	if (r->content_len > PostDevicesLengthLimit) {
+		httpd_resp_send_err(r, HTTPD_500_INTERNAL_SERVER_ERROR, "Content length too big");
+		return ESP_FAIL;
+	}
+
+	static std::array<char, PostDevicesLengthLimit> data;
+
+	std::size_t read = 0;
+	while (read < r->content_len) {
+		int singleRead = httpd_req_recv(r, data.data() + read, r->content_len);
+		if (singleRead <= 0) {
+			httpd_resp_send_err(r, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed reading post data");
+			return ESP_FAIL;
+		}
+		read += singleRead;
+	}
+	_postConfigListener(std::span<const char>(data.data(), r->content_len));
+
+	return ESP_OK;
+}
+
+void HttpServer::SetDevicesGetData(std::span<const char> data)
 {
 	_rawData.resize(data.size());
 	ESP_LOGD(TAG, "Setting data, length %d", data.size());
 	std::copy(data.begin(), data.end(), _rawData.data());
+}
+
+void HttpServer::SetConfigPostListener(std::function<void(std::span<const char>)> fn)
+{
+	_postConfigListener = fn;
 }
 
 void HttpServer::WifiHandler(esp_event_base_t eventBase, std::int32_t eventId, void * eventData)
@@ -209,20 +236,28 @@ void HttpServer::_InitHttp()
 	cfg.lru_purge_enable = true;
 	ESP_ERROR_CHECK(httpd_start(&_handle, &cfg));
 
-	const httpd_uri_t indexHandler{
-	    .uri = GetIndexUri.data(),
+	const httpd_uri_t getIndex{
+	    .uri = IndexUri.data(),
 	    .method = httpd_method_t::HTTP_GET,
-	    .handler = GetIndexHandlerPassthrough,
+	    .handler = &HandlerPassthrough<&HttpServer::GetIndexHandler>,
 	    .user_ctx = this,
 	};
-	const httpd_uri_t devHandler{
-	    .uri = GetDevicesUri.data(),
+	const httpd_uri_t getDevices{
+	    .uri = DevicesUri.data(),
 	    .method = httpd_method_t::HTTP_GET,
-	    .handler = GetDevicesHandlerPassthrough,
+	    .handler = &HandlerPassthrough<&HttpServer::GetDevicesHandler>,
 	    .user_ctx = this,
 	};
-	ESP_ERROR_CHECK(httpd_register_uri_handler(_handle, &devHandler));
-	ESP_ERROR_CHECK(httpd_register_uri_handler(_handle, &indexHandler));
+	const httpd_uri_t postConfig{
+	    .uri = ConfigUri.data(),
+	    .method = httpd_method_t::HTTP_POST,
+	    .handler = &HandlerPassthrough<&HttpServer::PostConfigHandler>,
+	    .user_ctx = this,
+	};
+
+	ESP_ERROR_CHECK(httpd_register_uri_handler(_handle, &getIndex));
+	ESP_ERROR_CHECK(httpd_register_uri_handler(_handle, &getDevices));
+	ESP_ERROR_CHECK(httpd_register_uri_handler(_handle, &postConfig));
 }
 
 }  // namespace Master::Impl

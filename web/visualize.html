@@ -5,16 +5,63 @@
 
 <head>
 	<title>ESP Bluetooth Localization</title>
+	<style>
+		.col {
+			float: left;
+			width: 50%;
+		}
+
+		td {
+			text-align: center;
+		}
+
+		input {
+			width: 90%;
+		}
+	</style>
 </head>
 
 <body style="margin:0;padding:0">
-	<div style="position:relative;height: 800px;">
+	<div style="float: left;width: 1000px; position:relative;height: 800px;">
 		<!-- We'll just put the canvas at 0,0 and assume that the canvas starts here from hereafter -->
 		<canvas style="position:absolute" id="canvas-static" width="1000" height="800"></canvas>
 		<canvas style="position:absolute" id="canvas-entities" width="1000" height="800"></canvas>
 		<canvas style="position:absolute" id="canvas-dynamic" width="1000" height="800"></canvas>
 	</div>
-	<textarea id="textarea" rows="7" cols="75" readonly></textarea>
+
+	<div style="float: left;min-width: 400px;max-width: 900px">
+		<hr>
+		<h2>Configuration</h2>
+		<table style="margin-left: auto;margin-right: auto;">
+			<tr>
+				<th colspan="3">BDA/MAC</th>
+			</tr>
+			<tr>
+				<td colspan="3"><input type="text" value="00:00:00:00:00:00" id="bda"></td>
+			</tr>
+			<tr>
+				<th>Reference path loss</th>
+				<th>Environment factor</th>
+				<th>Name</th>
+			</tr>
+			<tr>
+				<td><input type="number" step="1" id="path-loss-value" min="0" value="50" max="100"></td>
+				<td><input type="number" step="0.1" id="env-factor-value" min="0" value="4.0" max="10"></td>
+				<td><input type="text" id="bda-name" maxlength="16"></td>
+			</tr>
+			<tr>
+				<td><button id="set-path-loss">Set path loss</button></td>
+				<td><button id="set-env-factor">Set environment factor</button></td>
+				<td><button id="set-bda-name">Set BDA name</button></td>
+			</tr>
+		</table>
+
+		<hr>
+		<h2>Info</h2>
+		<textarea id="textarea" rows="7" cols="75" readonly></textarea>
+	</div>
+	<script src="visualize.js"></script>
+
 	<!-- JS will be embedded by the python script -->
 </body>
 

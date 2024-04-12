@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -12,17 +13,23 @@
 namespace
 {
 /// @brief Index page URI
-constexpr std::string_view GetIndexUri = "/";
+constexpr std::string_view IndexUri = "/";
 
 /// @brief Device API URI
-constexpr std::string_view GetDevicesUri = "/api/devices";
+constexpr std::string_view DevicesUri = "/api/devices";
+
+/// @brief Config API URI
+constexpr std::string_view ConfigUri = "/api/config";
+
+/// @brief Maximum length for API POST data
+constexpr std::size_t PostDevicesLengthLimit = 64;
 }  // namespace
 
 namespace Master::Impl
 {
 
 /// @brief Basic HTTP server implementation for Master device with 2 endpoints
-/// (GetIndexUri, GetDevicesUri).
+/// (IndexUri, DevicesUri).
 class HttpServer final
 {
 public:
@@ -38,8 +45,9 @@ public:
 	/// @param r request
 	/// @return OK; otherwise disconnect
 	/// @{
-	esp_err_t GetDevicesHandler(httpd_req_t * r);
 	esp_err_t GetIndexHandler(httpd_req_t * r);
+	esp_err_t GetDevicesHandler(httpd_req_t * r);
+	esp_err_t PostConfigHandler(httpd_req_t * r);
 	/// @}
 
 	/// @brief Wifi handler callback. Not meant to be called directly.
@@ -48,9 +56,13 @@ public:
 	/// @param eventData data
 	void WifiHandler(esp_event_base_t eventBase, std::int32_t eventId, void * eventData);
 
-	/// @brief Set data returned from API endpoint
+	/// @brief Set the data for GET DevicesUri
 	/// @param data raw data
-	void SetRawData(std::span<const char> data);
+	void SetDevicesGetData(std::span<const char> data);
+
+	/// @brief Listener for POST ConfigUri
+	/// @param fn function
+	void SetConfigPostListener(std::function<void(std::span<const char>)> fn);
 
 private:
 	/// HTTPd server handle
@@ -59,6 +71,8 @@ private:
 	WifiOpMode _mode;
 	/// Data for API endpoint
 	std::vector<char> _rawData;
+	/// Function called for API endpoint POST request
+	std::function<void(std::span<const char>)> _postConfigListener;
 
 	/// @brief Initializers
 	/// @{

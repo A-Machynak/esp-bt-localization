@@ -24,6 +24,7 @@ content_js = ""
 if args.automatic:
 	# Run html-minifier and google-closure-compiler
 	print(f"Minifying html file: \"{args.html_file}\", Js file: \"{args.js_file}\"")
+	print(f"Html size: {os.stat(args.html_file).st_size}, Js size: {os.stat(args.js_file).st_size}")
 
 	# HTML
 	html_minif = subprocess.run([
@@ -73,7 +74,7 @@ if args.compression:
 			f.write(f"0x{byte:02x}, ")
 		f.write("});\n")
 		print(f"Saved into \"{args.out_file}\"")
-		print(f"Original size: {len(content)}; Compressed size: {len(compressed)}")
+		print(f"Original/minified size: {len(content)}; Compressed size: {len(compressed)}")
 else:
 	# Only output
 	with open(args.out_file, "w") as f:

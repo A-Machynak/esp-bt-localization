@@ -18,9 +18,14 @@ void HttpServer::Init(const WifiConfig & config)
 	_impl->Init(config);
 }
 
-void HttpServer::SetRawData(std::span<const char> data)
+void HttpServer::SetDevicesGetData(std::span<const char> data)
 {
-	_impl->SetRawData(data);
+	_impl->SetDevicesGetData(data);
+}
+
+void HttpServer::SetConfigPostListener(std::function<void(std::span<const char>)> fn)
+{
+	_impl->SetConfigPostListener(fn);
 }
 
 }  // namespace Master

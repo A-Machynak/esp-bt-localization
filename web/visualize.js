@@ -20,9 +20,90 @@ function Init() {
 	setInterval(Update, 1000);
 	setInterval(GetData, 4000);
 	canvasDynamic.addEventListener('mousemove', function (event) {
-		mouseX = event.clientX; mouseY = event.clientY;
+		const p = PositionInCanvas(canvasDynamic, event.clientX, event.clientY);
+		mouseX = p[0]; mouseY = p[1];
 		RedrawDynamic();
 	});
+	canvasDynamic.addEventListener('click', function (event) {
+		TryPopupEntityConfig(event.clientX, event.clientY);
+	});
+
+	document.getElementById("set-path-loss").addEventListener("click", function() {
+		var bda = CheckAndConvertBda();
+		if (bda) {
+			ConfigSetPathLoss(bda, document.getElementById("path-loss-value").value);
+		}
+	});
+	document.getElementById("set-env-factor").addEventListener("click", function() {
+		var bda = CheckAndConvertBda();
+		if (bda) {
+			ConfigSetEnvFactor(bda, document.getElementById("env-factor-value").value);
+		}
+	});
+	document.getElementById("set-bda-name").addEventListener("click", function() {
+		var bda = CheckAndConvertBda();
+		if (bda) {
+			ConfigSetBdaName(bda, document.getElementById("bda-name").value);
+		}
+	});
+}
+
+function PositionInCanvas(canvas, x, y) {
+	const rect = canvas.getBoundingClientRect();
+	return [x - rect.left, y - rect.top];
+}
+
+function CheckAndConvertBda() {
+	var bda = BdaStringToHex(document.getElementById("bda").value);
+	if (typeof bda == "string") {
+		alert(bda);
+		return false;
+	}
+	return bda;
+}
+
+function ConfigSetPathLoss(bda, value) {
+	if (0 > value || value > 100) {
+		alert("Path loss should be between 0 and 100");
+		return;
+	}
+	const buf = new Uint8Array(7);
+	buf.set(bda, 0);
+	buf[6] = value;
+	PostConfig(buf);
+}
+function ConfigSetEnvFactor(bda, value) {
+	if (0.0 > value || value > 10.0) {
+		alert("Environment factor should be between 0 and 10");
+		return;
+	}
+	const buf = new Uint8Array(10);
+	buf.set(bda, 0); // MAC
+	new DataView(buf.buffer).setFloat32(6, value, true);
+	PostConfig(buf);
+}
+function ConfigSetBdaName(bda, value) {
+	if (0 >= value.length || value.length >= 16) {
+		alert("Name should have between 1 and 16 characters");
+		return;
+	}
+	var buf = new TextEncoder().encode(value);
+	PostConfig(MergeArrayBuffers(bda, buf));
+}
+
+function MergeArrayBuffers(b1, b2) {
+	const combined = new Uint8Array(b1.byteLength + b2.byteLength);
+	combined.set(b1, 0);
+	combined.set(b2, b1.byteLength);
+	return combined.buffer;
+}
+
+function PostConfig(bytes) {
+	console.log(bytes);
+
+	const xhr = new XMLHttpRequest();
+	xhr.open("POST", "/api/config");
+	xhr.send(bytes);
 }
 
 // Dynamic draw
@@ -77,6 +158,22 @@ function RedrawDynamic() {
 			ctx.fillText(`${e.IsBle ? "BLE " : "BT "} ${e.IsAddrTypePublic ? "Public " : "Random "} ${e.ScannerCount}`,
 				topLeftX, row++ * (fontSize + 2), 200);
 			row++;
+		}
+	}
+}
+
+function TryPopupEntityConfig(x, y) {
+	console.log("Pop");
+	for (var e of entities) {
+		const realCoord = ToCanvasCoordinates(e.X, e.Y);
+		const realX = realCoord[0];
+		const realY = realCoord[1];
+		console.log(mouseX, mouseY, realX, realY);
+		if (IsInRange(mouseX, mouseY, realX, realY)) {
+			console.log("INRANGE");
+			
+			document.getElementById("bda").value = BdaToString(e.Bda);
+			break;
 		}
 	}
 }
@@ -214,13 +311,59 @@ function ByteToHex(byte) {
 	const ch = "0123456789ABCDEF";
 	return ch[byte >> 4] + ch[byte & 0x0F];
 }
+
+function CharToNibble(b) {
+	if ('0' <= b && b <= '9') {
+		return b - '0';
+	}
+	else {
+		var c = b.charCodeAt(0);
+		const a = 'a'.charCodeAt(0);
+		const f = 'f'.charCodeAt(0);
+		const A = 'A'.charCodeAt(0);
+		const F = 'F'.charCodeAt(0);
+		if (a <= c && c <= f) {
+			return (c - a) + 10;
+		}
+		else if (A <= c && c <= F) {
+			return (c - A) + 10;
+		}
+	}
+	return NaN; // invalid
+}
+
+function HexToByte(nib1, nib2) { // 0x[B1,B2]
+	const b1 = CharToNibble(nib1);
+	const b2 = CharToNibble(nib2);
+	if (b1 == NaN || b2 == NaN) {
+		return NaN;
+	}
+	return (b1 << 4) | b2;
+}
 function BdaToString(bda) {
 	return ByteToHex(bda[0]) + ":" + ByteToHex(bda[1]) + ":" + ByteToHex(bda[2]) + ":"
 		+ ByteToHex(bda[3]) + ":" + ByteToHex(bda[4]) + ":" + ByteToHex(bda[5]);
 }
+function BdaStringToHex(str) {
+	const errMsg = "Incorrect BDA format. Expected: \"01:23:45:67:89:AB\" (String hex format)";
+	if (str.length != 17) {
+		return errMsg;
+	}
+
+	var array = new Uint8Array(6);
+	for (var i = 0; i < 6; i++) {
+		const pos = i * 3;
+		var b = HexToByte(str[pos], str[pos+1]);
+		if (b == NaN) {
+			return errMsg;
+		}
+		array[i] = b;
+	}
+	return array;
+}
 function EntityToString(dict) {
 	return `${dict.IsScanner ? "Scanner" : "Device"}`
-		+ `[${BdaToString(dict.Bda)}]:`
+		+ `[${BdaToString(dict.Bda)}]: `
 		+ `(${dict.X}, ${dict.Y}, ${dict.Z}), `
 		+ `(${dict.IsBle ? "BLE" : "BT"}, ${dict.IsAddrTypePublic ? "Public" : "Random"}, ${dict.ScannerCount})`
 		+ "\n";

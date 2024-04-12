@@ -317,6 +317,8 @@ void Wrapper::GattcCallback(esp_gattc_cb_event_t event,
 	case ESP_GATTC_REG_EVT: cb->GattcReg(param->reg); break;
 	case ESP_GATTC_UNREG_EVT: cb->GattcUnreg(); break;
 	case ESP_GATTC_OPEN_EVT: {
+		// Set MTU
+		esp_ble_gattc_send_mtu_req(app->GattIf, param->open.conn_id);
 		// Save connection
 		if (param->open.status == ESP_GATT_OK) {
 			_conns.emplace_back(app->AppId, param->open.conn_id, param->open.mtu, Mac(param->open.remote_bda));

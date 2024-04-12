@@ -39,6 +39,10 @@ public:
 	/// @param config config
 	void Init();
 
+	/// @brief HTTP server API POST callback
+	/// @param data data sent in POST request
+	void OnHttpServerUpdate(std::span<const char> data);
+
 	/// @brief BLE GAP related callbacks
 	/// @{
 	void GapBleScanResult(const Gap::Ble::Type::ScanResult & p) override;
