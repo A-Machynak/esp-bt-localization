@@ -26,7 +26,6 @@ Matrix<T>::Matrix()
     : _rows(0)
     , _cols(0)
 {
-	_data.reserve(1);
 }
 
 template <typename T>
@@ -143,7 +142,7 @@ void Matrix<T>::Reshape(std::size_t rows, std::size_t cols)
 						_data[newIdx] = this->operator()(iRow, iCol);
 					}
 					else {
-						_data[newIdx] = T{0};
+						_data[newIdx] = T{};
 					}
 				}
 			}

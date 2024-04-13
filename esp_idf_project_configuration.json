@@ -1,0 +1,54 @@
+{
+  "master": {
+    "build": {
+      "compileArgs": [],
+      "ninjaArgs": [],
+      "buildDirectoryPath": "",
+      "sdkconfigDefaults": [
+        "sdkconfig.master"
+      ],
+      "sdkconfigFilePath": ""
+    },
+    "env": {},
+    "flashBaudRate": "115200",
+    "idfTarget": "",
+    "monitorBaudRate": "115200",
+    "openOCD": {
+      "debugLevel": 0,
+      "configs": [],
+      "args": []
+    },
+    "tasks": {
+      "preBuild": "",
+      "preFlash": "",
+      "postBuild": "",
+      "postFlash": ""
+    }
+  },
+  "scanner": {
+    "build": {
+      "compileArgs": [],
+      "ninjaArgs": [],
+      "buildDirectoryPath": "",
+      "sdkconfigDefaults": [
+        "sdkconfig.scanner"
+      ],
+      "sdkconfigFilePath": ""
+    },
+    "env": {},
+    "flashBaudRate": "115200",
+    "idfTarget": "",
+    "monitorBaudRate": "115200",
+    "openOCD": {
+      "debugLevel": 0,
+      "configs": [],
+      "args": []
+    },
+    "tasks": {
+      "preBuild": "",
+      "preFlash": "",
+      "postBuild": "",
+      "postFlash": ""
+    }
+  }
+}

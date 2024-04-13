@@ -103,6 +103,7 @@ void App::OnHttpServerUpdate(std::span<const char> data)
 	// Update from http server
 	const std::span span(reinterpret_cast<const std::uint8_t *>(data.data()), data.size());
 	auto view = HttpApi::DevicesPostDataView(span);
+	ESP_LOGI(TAG, "Config update");
 
 	for (auto v = view.Next(); !std::holds_alternative<std::monostate>(v); v = view.Next()) {
 		std::visit(
@@ -125,10 +126,10 @@ void App::GapBleScanResult(const Gap::Ble::Type::ScanResult & p)
 	const Bt::Device device(p);
 
 	if (xSemaphoreTake(_memMutex, BlockTimeInCallback)) {
-		const auto scannerIdx = _memory.GetConnectedScannerIdx(device);  // Read
+		const bool IsConnectedScanner = _memory.IsConnectedScanner(device);  // Read
 		xSemaphoreGive(_memMutex);
 
-		if ((scannerIdx == InvalidScannerIdx) && _IsScanner(device)) {
+		if (!IsConnectedScanner && _IsScanner(device)) {
 			// New scanner
 			ESP_LOGI(TAG, "Found scanner (%s)", ToString(device.Bda).c_str());
 			// We have to stop scanning while connecting, BUT we can't
@@ -379,18 +380,17 @@ void App::UpdateScannersLoop()
 			continue;
 		}
 
-		const auto toAdvertiseIdx = _memory.GetScannerIdxToAdvertise();  // Read
-		if (toAdvertiseIdx != InvalidScannerIdx) {
-			const ScannerInfo & toAdvertise =
-			    _memory.GetScanners().at(toAdvertiseIdx).Info;  // Read
+		const auto advertiseInfo = _memory.GetScannerToAdvertise();  // Read
+		if (advertiseInfo) {
+			const auto connId = advertiseInfo->ConnId;
+			const auto stateChar = advertiseInfo->Service.StateChar;
 			xSemaphoreGive(_memMutex);
 
 			// Force advertising state
 			std::uint8_t val = Gatt::StateChar::Advertise;
-			esp_ble_gattc_write_char(_gattcApp->GattIf, toAdvertise.ConnId,
-			                         toAdvertise.Service.StateChar, 1, &val,
+			esp_ble_gattc_write_char(_gattcApp->GattIf, connId, stateChar, 1, &val,
 			                         ESP_GATT_WRITE_TYPE_RSP, ESP_GATT_AUTH_REQ_NONE);
-			ESP_LOGD(TAG, "Scanner %d should advertise", toAdvertiseIdx);
+			ESP_LOGD(TAG, "Scanner %d should advertise", connId);
 		}
 		else {
 			xSemaphoreGive(_memMutex);

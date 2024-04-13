@@ -11,6 +11,7 @@
 #include "master/master_cfg.h"
 
 #include <optional>
+#include <span>
 #include <vector>
 
 #include <freertos/semphr.h>

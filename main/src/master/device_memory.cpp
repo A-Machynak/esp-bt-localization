@@ -22,18 +22,23 @@ namespace Master
 
 DeviceMemory::DeviceMemory()
 {
-	_serializedData.reserve(128 * 20);
-	_scannerRssis.Reserve(10 * 10);
-	_scannerDistances.Reserve(10 * 10);
-	_scannerPositions.Reserve(10 * 10);
+	_serializedData.reserve(MaximumDevicesSoft * DeviceOut::Size);
+	_scannerRssis.Reserve(MaximumScannersSoft * MaximumScannersSoft);
+	_scannerDistances.Reserve(MaximumScannersSoft * MaximumScannersSoft);
+	_scannerPositions.Reserve(MaximumScannersSoft * Dimensions);
 }
 
 void DeviceMemory::AddScanner(const ScannerInfo & scanner)
 {
+	if (_scanners.size() >= MaximumScanners) {
+		ESP_LOGW(TAG, "Reached connected scanner limit. Ignoring new scanner.");
+		return;
+	}
+
 	// Find if it already exists
-	if (auto sc = _scannerMap.find(scanner.Bda); sc != _scannerMap.end()) {
+	if (auto sc = _FindScanner(scanner.Bda); sc != _scanners.end()) {
 		// Already exists
-		ScannerInfo & scInfo = _scanners.at(sc->second).Info;
+		ScannerInfo & scInfo = sc->Info;
 		if (scInfo.ConnId == scanner.ConnId) {
 			return;  // Duplicate call?
 		}
@@ -44,19 +49,13 @@ void DeviceMemory::AddScanner(const ScannerInfo & scanner)
 	else {
 		// New scanner
 		_scanners.push_back(scanner);
-		const std::size_t newIdx = _scanners.size() - 1;
-		_scannerMap.emplace(scanner.Bda, newIdx);
+
 		_scannerDistances.Reshape(_scanners.size(), _scanners.size());
 		_scannerRssis.Reshape(_scanners.size(), _scanners.size());
 
-		auto scDev = _deviceMap.find(scanner.Bda);
-		if (scDev != _deviceMap.end()) {
-			// Already found as a device
-			for (auto & meas : _devices[scDev->second].Data) {
-				_UpdateScanner(meas.ScannerIdx, newIdx, meas.Rssi);
-			}
-			_devices.erase(_devices.begin() + scDev->second);
-			_deviceMap.erase(scDev);
+		if (auto scDev = _FindDevice(scanner.Bda); scDev != _devices.end()) {
+			// Already found as a device; erase it
+			_devices.erase(scDev);
 		}
 	}
 	ESP_LOGI(TAG, "%d scanners connected", _scanners.size());
@@ -71,9 +70,9 @@ void DeviceMemory::UpdateDistance(const std::uint16_t scannerConnId,
 	}
 
 	// Find connection id - we have to iterate through everything
-	for (std::size_t i = 0; i < _scanners.size(); i++) {
-		if (_scanners.at(i).Info.ConnId == scannerConnId) {
-			_UpdateDistance(i, device);
+	for (auto it = _scanners.begin(); it != _scanners.end(); it++) {
+		if (it->Info.ConnId == scannerConnId) {
+			_UpdateDistance(it, device);
 			break;
 		}
 	}
@@ -85,61 +84,48 @@ void DeviceMemory::UpdateDistance(const Mac & scanner, const Core::DeviceDataVie
 		return;
 	}
 
-	if (auto sc = _scannerMap.find(scanner); sc != _scannerMap.end()) {
-		_UpdateDistance(sc->second, device);
+	if (auto sc = _FindScanner(scanner); sc != _scanners.end()) {
+		_UpdateDistance(sc, device);
 	}
 }
 
-std::size_t DeviceMemory::GetScannerIdxToAdvertise() const
+const ScannerInfo * DeviceMemory::GetScannerToAdvertise() const
 {
 	for (std::size_t i = 0; i < _scanners.size(); i++) {
 		for (std::size_t j = i + 1; j < _scanners.size(); j++) {
+			// Scanner RSSI between i-j/j-i missing?
 			if (_scannerRssis(i, j) == 0) {
-				// Scanner RSSI between i-j is missing; return at least one
-				return i;
+				return &(_scanners.begin() + i)->Info;
+			}
+			else if (_scannerRssis(j, i) == 0) {
+				return &(_scanners.begin() + j)->Info;
 			}
 		}
 	}
-	return InvalidScannerIdx;
+	return nullptr;
 }
 
 void DeviceMemory::RemoveScanner(std::uint16_t connId)
 {
 	// Find the scanner
-	for (std::size_t i = 0; i < _scanners.size(); i++) {
-		if (_scanners.at(i).Info.ConnId == connId) {
-			ESP_LOGI(TAG, "Removing scanner %s", ToString(_scanners.at(i).Info.Bda).c_str());
-			_RemoveScanner(connId);
-			break;
-		}
+	auto it = std::find_if(_scanners.begin(), _scanners.end(),
+	                       [connId](const ScannerDetail & s) { return s.Info.ConnId == connId; });
+	if (it != _scanners.end()) {
+		_RemoveScanner(it);
 	}
 }
 
-std::size_t DeviceMemory::GetConnectedScannerIdx(const Bt::Device & dev) const
+bool DeviceMemory::IsConnectedScanner(const Bt::Device & dev) const
 {
 	// Early simple checks
 	if (!dev.IsBle() || dev.GetBle().AddrType != BLE_ADDR_TYPE_PUBLIC
 	    || dev.GetBle().EirData.Records.size() != 1) {
-		return InvalidScannerIdx;
-	}
-
-	auto it = _scannerMap.find(dev.Bda);
-	return (it != _scannerMap.end()) ? it->second : InvalidScannerIdx;
-}
-
-bool DeviceMemory::ShouldAdvertise(ScannerIdx idx)
-{
-	if (idx >= _scanners.size()) {
 		return false;
 	}
 
-	// Go through each scanner and check if it's missing this scanner's bda
-	for (std::size_t i = 0; i < _scanners.size(); i++) {
-		if (i != idx && _scannerRssis(i, idx) == 0) {
-			return true;
-		}
-	}
-	return false;
+	return std::find_if(_scanners.begin(), _scanners.end(),
+	                    [&dev](const ScannerDetail & s) { return s.Info.Bda == dev.Bda; })
+	       != _scanners.end();
 }
 
 const Math::Matrix<float> * DeviceMemory::UpdateScannerPositions()
@@ -288,51 +274,82 @@ const std::vector<ScannerDetail> & DeviceMemory::GetScanners() const
 	return _scanners;
 }
 
-void DeviceMemory::_UpdateDistance(const std::size_t scannerIdx,
-                                   const Core::DeviceDataView::Array & devices)
+DeviceMemory::ScannerIt DeviceMemory::_FindScanner(const Mac & mac)
+{
+	return std::find_if(_scanners.begin(), _scanners.end(),
+	                    [&mac](const ScannerDetail & s) { return s.Info.Bda == mac; });
+}
+
+DeviceMemory::DeviceIt DeviceMemory::_FindDevice(const Mac & mac)
+{
+	return std::find_if(_devices.begin(), _devices.end(),
+	                    [&mac](const DeviceMeasurements & s) { return s.Info.Bda == mac; });
+}
+
+void DeviceMemory::_AddDevice(DeviceMeasurements device)
+{
+	if (_devices.size() > MaximumDevices) {
+		auto it =
+		    std::min_element(_devices.begin(), _devices.end(),
+		                     [](const DeviceMeasurements & lhs, const DeviceMeasurements & rhs) {
+			                     return lhs.LastUpdate < rhs.LastUpdate;
+		                     });
+		if (it == _devices.end()) {
+			return;
+		}
+		_devices.erase(it);
+	}
+
+	_devices.push_back(std::move(device));
+}
+
+void DeviceMemory::_UpdateDistance(ScannerIt sIt, const Core::DeviceDataView::Array & devices)
 {
 	for (std::size_t i = 0; i < devices.Size; i++) {
 		const Core::DeviceDataView & view = devices[i];
 		const auto bda = view.Mac();
 
 		// Check scanners first
-		if (const auto & s1 = _scannerMap.find(bda); s1 != _scannerMap.end()) {
+		if (const auto & s1 = _FindScanner(bda); s1 != _scanners.end()) {
 			// It's a scanner
-			_UpdateScanner(scannerIdx, s1->second, view.Rssi());
+			_UpdateScanner(sIt, s1, view.Rssi());
 		}
-		else if (const auto & dev = _deviceMap.find(bda); dev != _deviceMap.end()) {
+		else if (const auto & dev = _FindDevice(bda); dev != _devices.end()) {
 			// Found device
-			_UpdateDevice(scannerIdx, dev->second, view.Rssi());
+			_UpdateDevice(sIt, dev, view.Rssi());
 		}
 		else {
 			// Not a device nor a scanner -> new device
+			const std::size_t idx = std::distance(_scanners.begin(), sIt);
 			_devices.emplace_back(bda, view.IsBle(), view.IsAddrTypePublic(),
-			                      MeasurementData{scannerIdx, view.Rssi()});
-			_deviceMap.emplace(bda, _devices.size() - 1);
+			                      MeasurementData{idx, view.Rssi()});
 		}
 	}
 }
 
-void DeviceMemory::_UpdateDevice(std::size_t scannerIdx, std::size_t devIdx, std::int8_t rssi)
+void DeviceMemory::_UpdateDevice(ScannerIt sIt, DeviceIt devIt, std::int8_t rssi)
 {
 	// Look up if measurement already exists
-	std::vector<MeasurementData> & devMeas = _devices.at(devIdx).Data;
-	auto meas =
-	    std::find_if(devMeas.begin(), devMeas.end(), [scannerIdx](const MeasurementData & m) {
-		    return m.ScannerIdx == scannerIdx;
-	    });
+	std::vector<MeasurementData> & devMeas = devIt->Data;
+	const std::size_t sIdx = std::distance(_scanners.begin(), sIt);
+	auto meas = std::find_if(devMeas.begin(), devMeas.end(),
+	                         [sIdx](const MeasurementData & m) { return m.ScannerIdx == sIdx; });
+
 	if (meas != devMeas.end()) {
 		// Measurement exists, update
 		meas->Rssi = (meas->Rssi + rssi) / 2;
 	}
 	else {
 		// First measurement
-		devMeas.emplace_back(scannerIdx, rssi);
+		devMeas.emplace_back(sIdx, rssi);
 	}
 }
 
-void DeviceMemory::_UpdateScanner(std::size_t sIdx1, std::size_t sIdx2, std::int8_t rssi)
+void DeviceMemory::_UpdateScanner(ScannerIt sc1, ScannerIt sc2, std::int8_t rssi)
 {
+	const std::size_t sIdx1 = std::distance(_scanners.begin(), sc1);
+	const std::size_t sIdx2 = std::distance(_scanners.begin(), sc2);
+
 	_scannerPositionsSet = false;
 
 	// Look up if measurement already exists
@@ -360,27 +377,26 @@ void DeviceMemory::_UpdateScanner(std::size_t sIdx1, std::size_t sIdx2, std::int
 	         sIdx1, sIdx2, rssiVal, _scannerDistances(sIdx1, sIdx2), refPathLoss, envFactor);
 }
 
-void DeviceMemory::_RemoveScanner(std::size_t scannerIdx)
+void DeviceMemory::_RemoveScanner(ScannerIt sIt)
 {
-	assert(scannerIdx < _scanners.size());
+	const std::size_t sIdx = std::distance(_scanners.begin(), sIt);
 
 	// Remove
-	_scannerMap.erase(_scanners.at(scannerIdx).Info.Bda);
-	_scanners.erase(_scanners.begin() + scannerIdx);
+	_scanners.erase(sIt);
 
 	// Remove device measurements with this index
-	_RemoveDeviceMeasurements(scannerIdx);
+	_ResetDeviceMeasurements();
 
 	// Remove from scanner distances - shift and reshape.
 	// Shifts everything towards the empty column/row, which gets created by removing this scanner.
 	const std::size_t size = _scannerDistances.Rows();  // (Symmetric)
-	for (std::size_t i = scannerIdx + 1; i < size; i++) {
+	for (std::size_t i = sIdx + 1; i < size; i++) {
 		for (std::size_t j = 0; j < size; j++) {
 			_scannerDistances(i, j) = _scannerDistances(i - 1, j);
-			_scannerDistances(j, i) = _scannerDistances(i, j - 1);
+			_scannerDistances(j, i) = _scannerDistances(j, i-1);
 
 			_scannerRssis(i, j) = _scannerRssis(i - 1, j);
-			_scannerRssis(j, i) = _scannerRssis(i, j - 1);
+			_scannerRssis(j, i) = _scannerRssis(j, i-1);
 		}
 	}
 	_scannerDistances.Reshape(size - 1, size - 1);
@@ -389,13 +405,11 @@ void DeviceMemory::_RemoveScanner(std::size_t scannerIdx)
 	UpdateScannerPositions();
 }
 
-void DeviceMemory::_RemoveDeviceMeasurements(std::size_t scannerIdx)
+void DeviceMemory::_ResetDeviceMeasurements()
 {
-	// Remove from devices
-	for (const auto & [bda, idx] : _deviceMap) {
-		std::erase_if(_devices[idx].Data, [scannerIdx](const MeasurementData & meas) {
-			return meas.ScannerIdx == scannerIdx;
-		});
+	// Remove from devices; just clear everything instead of removing and shifting everything
+	for (auto & dev : _devices) {
+		dev.Data.clear();
 	}
 }
 
@@ -404,11 +418,7 @@ void DeviceMemory::_RemoveStaleDevices()
 	const TimePoint now = Clock::now();  // just calculate it once
 
 	std::erase_if(_devices, [&](const DeviceMeasurements & dev) {
-		if (DeltaMs(dev.LastUpdate, now) > DeviceRemoveTimeMs) {
-			_deviceMap.erase(dev.Info.Bda);
-			return true;
-		}
-		return false;
+		return (DeltaMs(dev.LastUpdate, now) > DeviceRemoveTimeMs);
 	});
 }
 
@@ -416,6 +426,7 @@ void DeviceMemory::_UpdateScannerCenter()
 {
 	// Calculate the average
 	std::fill(_scannerCenter.begin(), _scannerCenter.end(), 0.0);
+
 	for (std::size_t i = 0; i < _scannerPositions.Rows(); i++) {
 		for (std::size_t dim = 0; dim < _scannerCenter.size(); dim++) {
 			_scannerCenter.at(dim) += _scannerPositions(i, dim);

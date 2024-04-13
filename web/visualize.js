@@ -25,7 +25,7 @@ function Init() {
 		RedrawDynamic();
 	});
 	canvasDynamic.addEventListener('click', function (event) {
-		TryPopupEntityConfig(event.clientX, event.clientY);
+		CheckClickOnEntity();
 	});
 
 	document.getElementById("set-path-loss").addEventListener("click", function() {
@@ -46,6 +46,9 @@ function Init() {
 			ConfigSetBdaName(bda, document.getElementById("bda-name").value);
 		}
 	});
+	document.getElementById("sys-msg-restart").addEventListener("click", function() {
+		ConfigSendSystemMsg(0);
+	});
 }
 
 function PositionInCanvas(canvas, x, y) {
@@ -62,45 +65,54 @@ function CheckAndConvertBda() {
 	return bda;
 }
 
+function ConfigSendSystemMsg(value) {
+	if (value != 0) {
+		alert("System message can only be of type 0");
+		return;
+	}
+	const buf = new Uint8Array(2);
+	buf[0] = 0;      // type
+	buf[1] = 0;      // sys msg type
+	PostConfig(buf);
+}
+
 function ConfigSetPathLoss(bda, value) {
 	if (0 > value || value > 100) {
 		alert("Path loss should be between 0 and 100");
 		return;
 	}
-	const buf = new Uint8Array(7);
-	buf.set(bda, 0);
-	buf[6] = value;
+	const buf = new Uint8Array(8);
+	buf[0] = 1;      // type
+	buf.set(bda, 1); // MAC
+	buf[7] = value;  // path loss
 	PostConfig(buf);
 }
+
 function ConfigSetEnvFactor(bda, value) {
 	if (0.0 > value || value > 10.0) {
 		alert("Environment factor should be between 0 and 10");
 		return;
 	}
-	const buf = new Uint8Array(10);
-	buf.set(bda, 0); // MAC
-	new DataView(buf.buffer).setFloat32(6, value, true);
+	const buf = new Uint8Array(11);
+	buf[0] = 2;      // type
+	buf.set(bda, 1); // MAC
+	new DataView(buf.buffer).setFloat32(7, value, true);
 	PostConfig(buf);
 }
+
 function ConfigSetBdaName(bda, value) {
 	if (0 >= value.length || value.length >= 16) {
 		alert("Name should have between 1 and 16 characters");
 		return;
 	}
-	var buf = new TextEncoder().encode(value);
-	PostConfig(MergeArrayBuffers(bda, buf));
-}
-
-function MergeArrayBuffers(b1, b2) {
-	const combined = new Uint8Array(b1.byteLength + b2.byteLength);
-	combined.set(b1, 0);
-	combined.set(b2, b1.byteLength);
-	return combined.buffer;
+	var buf = new Uint8Array(1 + bda.byteLength + value.length);
+	buf[0] = 3; // type
+	buf.set(bda, 1); // MAC
+	buf.set(new TextEncoder().encode(value), 1 + bda.byteLength); // Name
+	PostConfig(buf);
 }
 
 function PostConfig(bytes) {
-	console.log(bytes);
-
 	const xhr = new XMLHttpRequest();
 	xhr.open("POST", "/api/config");
 	xhr.send(bytes);
@@ -154,24 +166,23 @@ function RedrawDynamic() {
 			// Show some detailed information
 			ctx.fillText(e.IsScanner ? "Scanner" : "Device", topLeftX, row++ * (fontSize + 2), 200);
 			ctx.fillText(BdaToString(e.Bda), topLeftX, row++ * (fontSize + 2), 200);
-			ctx.fillText(`(${e.X}, ${e.Y}, ${e.Z})`, topLeftX, row++ * (fontSize + 2), 200);
 			ctx.fillText(`${e.IsBle ? "BLE " : "BT "} ${e.IsAddrTypePublic ? "Public " : "Random "} ${e.ScannerCount}`,
 				topLeftX, row++ * (fontSize + 2), 200);
+			ctx.fillText(`x: ${e.X.toFixed(5)}`, topLeftX, row++ * (fontSize + 2), 200);
+			ctx.fillText(`y: ${e.Y.toFixed(5)}`, topLeftX, row++ * (fontSize + 2), 200);
+			ctx.fillText(`z: ${e.Z.toFixed(5)}`, topLeftX, row++ * (fontSize + 2), 200);
 			row++;
 		}
 	}
 }
 
-function TryPopupEntityConfig(x, y) {
-	console.log("Pop");
+function CheckClickOnEntity() {
 	for (var e of entities) {
 		const realCoord = ToCanvasCoordinates(e.X, e.Y);
 		const realX = realCoord[0];
 		const realY = realCoord[1];
 		console.log(mouseX, mouseY, realX, realY);
 		if (IsInRange(mouseX, mouseY, realX, realY)) {
-			console.log("INRANGE");
-			
 			document.getElementById("bda").value = BdaToString(e.Bda);
 			break;
 		}
@@ -244,7 +255,7 @@ function DrawScanner(ctx, x, y, z) {
 	// Radial gradient around it
 	const radius = 100;
 	var grad = ctx.createRadialGradient(x, y, 1, x, y, radius);
-	grad.addColorStop(0, `rgba(255,165,0,0.5`);
+	grad.addColorStop(0, `rgba(255,165,0,0.1`);
 	grad.addColorStop(0.9, `rgba(0,0,0,0.0)`);
 
 	ctx.fillStyle = grad;

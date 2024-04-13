@@ -136,8 +136,10 @@ esp_err_t HttpServer::PostConfigHandler(httpd_req_t * r)
 		}
 		read += singleRead;
 	}
-	_postConfigListener(std::span<const char>(data.data(), r->content_len));
-
+	if (_postConfigListener) {
+		_postConfigListener(std::span<const char>(data.data(), r->content_len));
+	}
+	httpd_resp_sendstr(r, "OK");
 	return ESP_OK;
 }
 

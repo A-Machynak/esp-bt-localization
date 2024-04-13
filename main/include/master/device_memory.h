@@ -28,15 +28,24 @@ constexpr std::size_t MinimumScanners = 2;
 /// @brief How long before a device gets removed if it doens't receive a measurement. [ms]
 constexpr std::int64_t DeviceRemoveTimeMs = 60'000;
 
+/// @brief Hard device limit.
+constexpr std::size_t MaximumDevices = 128;
+
+/// @brief Soft device limit. This much will be preallocated.
+/// Adding more devices might result in reallocation fail and restart.
+constexpr std::size_t MaximumDevicesSoft = MaximumDevices;
+
+/// @brief Hard scanner limit.
+constexpr std::size_t MaximumScanners = 10;
+
+/// @brief Soft scanner limit. This much will be preallocated.
+/// Adding more scanners might result in reallocation fail and restart.
+constexpr std::size_t MaximumScannersSoft = 10;
+
 }  // namespace
 
 namespace Master
 {
-/// @brief Index type
-using ScannerIdx = std::size_t;
-
-/// @brief Invalid index
-constexpr ScannerIdx InvalidScannerIdx = std::numeric_limits<ScannerIdx>::max();
 
 /// @brief Memory for storing and manipulating with devices and scanners.
 ///
@@ -68,23 +77,16 @@ public:
 	/// scanner and therefore should start advertising. Returns only a single scanner
 	/// (since we can't update more at the same time).
 	/// @return Scanner information or InvalidScannerIdx, if no scanners are required to advertise
-	ScannerIdx GetScannerIdxToAdvertise() const;
+	const ScannerInfo * GetScannerToAdvertise() const;
 
 	/// @brief Remove scanner
 	/// @param connId connection id which this scanner uses
 	void RemoveScanner(std::uint16_t connId);
 
-	/// @brief Checks whether this device is an already connected scanner and returns it
+	/// @brief Checks whether this device is an already connected scanner
 	/// @param bda address
-	/// @return scanner index or InvalidScannerIdx if not found
-	ScannerIdx GetConnectedScannerIdx(const Bt::Device & dev) const;
-
-	/// @brief Whether or not a scanner should start advertising - that is, another scanner
-	/// is missing distance information to this scanner
-	/// @param scanner scanner to check
-	/// @return true - should start advertising, because another scanner is missing distance
-	/// information
-	bool ShouldAdvertise(ScannerIdx scannerId);
+	/// @return true if device is a currently connected scanner
+	bool IsConnectedScanner(const Bt::Device & dev) const;
 
 	/// @brief Update and get the scanner positions.
 	/// @return scanner positions or nullptr, if positions cannot be calculated
@@ -117,41 +119,52 @@ private:
 	/// @brief Used as an initial guess for devices
 	std::array<float, Dimensions> _scannerCenter{0.0};
 
-	/// Connected scanners, devices and maps for BDA lookup.
+	/// @brief Connected scanners and devices.
 	/// @{
 	std::vector<ScannerDetail> _scanners;
 	std::vector<DeviceMeasurements> _devices;
-	std::map<Mac, std::size_t, Mac::Cmp> _scannerMap;
-	std::map<Mac, std::size_t, Mac::Cmp> _deviceMap;
+	using ScannerIt = std::vector<ScannerDetail>::iterator;
+	using DeviceIt = std::vector<DeviceMeasurements>::iterator;
 	/// @}
 
 	/// @brief For raw data serialization
 	std::vector<std::uint8_t> _serializedData;
 
+	/// @brief Find a scanner/device
+	/// @param mac BDA
+	/// @return scanner/device iterator
+	/// @{
+	ScannerIt _FindScanner(const Mac & mac);
+	DeviceIt _FindDevice(const Mac & mac);
+	/// @}
+
+	/// @brief Add new device with maximum size checking.
+	/// @param device new device data
+	void _AddDevice(DeviceMeasurements device);
+
 	/// @brief Update distance information between a scanner and devices/scanners
-	/// @param scanner scanner
+	/// @param sIt scanner
 	/// @param devices devices and/or scanners
-	void _UpdateDistance(ScannerIdx scannerIdx, const Core::DeviceDataView::Array & devices);
+	void _UpdateDistance(ScannerIt sIt, const Core::DeviceDataView::Array & devices);
 
 	/// @brief Update distance information to a device
-	/// @param scannerIdx scanner
-	/// @param devIdx device
+	/// @param sIt scanner
+	/// @param devIt device
 	/// @param rssi distance
-	void _UpdateDevice(std::size_t scannerIdx, std::size_t devIdx, std::int8_t rssi);
+	void _UpdateDevice(ScannerIt sIt, DeviceIt devIt, std::int8_t rssi);
 
 	/// @brief Update distance information between 2 scanners
-	/// @param sIdx1 first scanner
-	/// @param sIdx2 second scanner
+	/// @param sIt1 first scanner
+	/// @param sIt2 second scanner
 	/// @param rssi distance
-	void _UpdateScanner(std::size_t sIdx1, std::size_t sIdx2, std::int8_t rssi);
+	void _UpdateScanner(ScannerIt sIt1, ScannerIt sIt2, std::int8_t rssi);
 
 	/// @brief Remove scanner and measurements related to it
-	/// @param scannerIdx index to _scanners
-	void _RemoveScanner(std::size_t scannerIdx);
+	/// @param sIt iterator from _scanners
+	void _RemoveScanner(ScannerIt sIt);
 
-	/// @brief Remove measurements related to scanner
-	/// @param scannerIdx index to _scanners
-	void _RemoveDeviceMeasurements(std::size_t scannerIdx);
+	/// @brief Remove measurements; called after a scanner disconnects.
+	void _ResetDeviceMeasurements();
 
 	/// @brief Remove old devices.
 	void _RemoveStaleDevices();

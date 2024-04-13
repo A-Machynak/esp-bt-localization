@@ -27,21 +27,16 @@ if args.automatic:
 	print(f"Html size: {os.stat(args.html_file).st_size}, Js size: {os.stat(args.js_file).st_size}")
 
 	# HTML
-	html_minif = subprocess.run([
-		"html-minifier",
-		"--collapse-whitespace",
-		"--remove-comments",
-		"--remove-optional-tags",
-		"--remove-redundant-attributes",
-		"--remove-script-type-attributes",
-		"--remove-tag-whitespace",
-		args.html_file], shell=True, capture_output=True)
+	print("Running html-minifier ...")
+	cmd = "html-minifier --collapse-whitespace --remove-comments --remove-optional-tags --remove-redundant-attributes --remove-script-type-attributes --remove-tag-whitespace " + args.html_file
+	html_minif = subprocess.run(cmd, shell=True, capture_output=True)
 	content_html = html_minif.stdout.decode('ascii')
 	if html_minif.returncode != 0:
 		print(f"HTML minification error: {html_minif.stderr.decode()}")
 		sys.exit(1)
 
 	# JS
+	print("Running google-closure-compiler ...")
 	cmd = "google-closure-compiler -O ADVANCED --js " + args.js_file
 	js_minif = subprocess.run(cmd, shell=True, capture_output=True)
 	if js_minif.returncode != 0:
