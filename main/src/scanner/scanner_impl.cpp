@@ -263,7 +263,7 @@ void App::_AdvertiseDefault()
 	    .own_addr_type = esp_ble_addr_type_t::BLE_ADDR_TYPE_PUBLIC,
 	    .peer_addr = {0},
 	    .peer_addr_type = esp_ble_addr_type_t::BLE_ADDR_TYPE_PUBLIC,
-	    .channel_map = esp_ble_adv_channel_t::ADV_CHNL_ALL,
+	    .channel_map = esp_ble_adv_channel_t::ADV_CHNL_37,
 	    .adv_filter_policy = esp_ble_adv_filter_t::ADV_FILTER_ALLOW_SCAN_ANY_CON_ANY,
 	};
 	_bleGap.StartAdvertising(&advParams);
@@ -280,7 +280,7 @@ void App::_AdvertiseToBeacons()
 	    .own_addr_type = esp_ble_addr_type_t::BLE_ADDR_TYPE_PUBLIC,
 	    .peer_addr = {0},
 	    .peer_addr_type = esp_ble_addr_type_t::BLE_ADDR_TYPE_PUBLIC,
-	    .channel_map = esp_ble_adv_channel_t::ADV_CHNL_ALL,
+	    .channel_map = esp_ble_adv_channel_t::ADV_CHNL_37,
 	    .adv_filter_policy = esp_ble_adv_filter_t::ADV_FILTER_ALLOW_SCAN_WLST_CON_WLST,
 	};
 	_bleGap.StartAdvertising(&advParams, AdvertisingLength);
