@@ -20,10 +20,10 @@ namespace
 constexpr std::size_t Dimensions = 3;
 
 /// @brief Minimum amount of device measurements to try calculating the device position
-constexpr std::size_t MinimumMeasurements = 2;
+constexpr std::size_t MinimumMeasurements = 3;
 
 /// @brief Minimum amount of scanners to calculate their relative positions
-constexpr std::size_t MinimumScanners = 2;
+constexpr std::size_t MinimumScanners = 3;
 
 /// @brief How long before a device gets removed if it doens't receive a measurement. [ms]
 constexpr std::int64_t DeviceRemoveTimeMs = 60'000;

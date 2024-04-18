@@ -9,8 +9,10 @@ const canvasDynamicCtx = canvasDynamic.getContext("2d");
 const boardWidth = 800; const boardHeight = 800;
 const unitSquare = 25;
 
+var EntityMemoryLimit = 3; // Assumed to be > 1
 // Array of dict (Scanners/Devices) { Bda, X, Y, Z, IsScanner, IsBle, IsAddrTypePublic }
-let entities = [];
+let entityMemory = Array.from(Array(EntityMemoryLimit), () => new Array(0));
+let entityHeadIndex = 0;
 let mouseX = 0, mouseY = 0;
 
 window.addEventListener("load", Init);
@@ -41,14 +43,25 @@ function Init() {
 		}
 	});
 	document.getElementById("set-bda-name").addEventListener("click", function() {
-		var bda = CheckAndConvertBda();
-		if (bda) {
-			ConfigSetBdaName(bda, document.getElementById("bda-name").value);
-		}
+		SetLocalBdaName(document.getElementById("bda").value, document.getElementById("bda-name").value);
+		//var bda = CheckAndConvertBda();
+		//if (bda) { ConfigSetBdaName(bda, document.getElementById("bda-name").value); }
 	});
 	document.getElementById("sys-msg-restart").addEventListener("click", function() {
 		ConfigSendSystemMsg(0);
 	});
+	document.getElementById("set-path-limit").addEventListener("click", function() {
+		ChangePathLimit(parseInt(document.getElementById("set-path-limit-value").value));
+	});
+}
+
+function ChangePathLimit(value) {
+	if (value < 1) {
+		return;
+	}
+	entityHeadIndex = 0;
+	EntityMemoryLimit = value;
+	entityMemory = Array.from(Array(EntityMemoryLimit), () => new Array(0));
 }
 
 function PositionInCanvas(canvas, x, y) {
@@ -100,7 +113,7 @@ function ConfigSetEnvFactor(bda, value) {
 	PostConfig(buf);
 }
 
-function ConfigSetBdaName(bda, value) {
+function ConfigSetBdaName(bda, value) { // unused
 	if (0 >= value.length || value.length >= 16) {
 		alert("Name should have between 1 and 16 characters");
 		return;
@@ -110,6 +123,15 @@ function ConfigSetBdaName(bda, value) {
 	buf.set(bda, 1); // MAC
 	buf.set(new TextEncoder().encode(value), 1 + bda.byteLength); // Name
 	PostConfig(buf);
+}
+
+function SetLocalBdaName(bda, value) {
+	const check = BdaStringToHex(bda);
+	if (typeof check == "string") { // only for validation
+		alert(check);
+		return;
+	}
+	window.localStorage.setItem(bda, value);
 }
 
 function PostConfig(bytes) {
@@ -132,18 +154,43 @@ function UpdateEntities() {
 	textarea.value = "";
 
 	// { Bda, X, Y, Z, IsScanner, IsBle, IsAddrTypePublic }
-	for (var e of entities) {
+	for (var e of entityMemory[entityHeadIndex]) {
 		// Append to textarea
 		textarea.value += EntityToString(e);
 
+		UpdatePastLines(ctx, e);
+		
 		const realCoord = ToCanvasCoordinates(e.X, e.Y);
-		const realX = realCoord[0];
-		const realY = realCoord[1];
 		if (e.IsScanner) {
-			DrawScanner(ctx, realX, realY, e.Z);
+			DrawScanner(ctx, realCoord[0], realCoord[1], e.Z);
 		}
 		else {
-			DrawDevice(ctx, realX, realY, e.Z);
+			DrawDevice(ctx, realCoord[0], realCoord[1], e.Z);
+		}
+	}
+}
+
+function UpdatePastLines(ctx, entity) {
+	var prevX, prevY;
+	var first = true;
+	for (var i = 0; i < entityMemory.length; i++) {
+		// Values are inserted as if it's a ring buffer
+		const idx = (entityHeadIndex + i + 1) % entityMemory.length;
+
+		const found = entityMemory[idx].find((e) => e.Bda.every((v, i) => v === entity.Bda[i]));
+		if (found) {// Draw simple line between old and new position
+			const xy = ToCanvasCoordinates(found.X, found.Y);
+			if (!first) {
+				ctx.beginPath();
+				ctx.setLineDash([5,5]);
+				ctx.moveTo(prevX, prevY);
+				ctx.lineTo(xy[0], xy[1]);
+				ctx.stroke();
+			}
+
+			prevX = xy[0];
+			prevY = xy[1];
+			first = false;
 		}
 	}
 }
@@ -158,11 +205,15 @@ function RedrawDynamic() {
 	// { Bda, X, Y, Z, IsScanner, IsBle, IsAddrTypePublic }
 	var row = 1;
 	const topLeftX = 800 + 5;
-	for (var e of entities) {
+	for (var e of entityMemory[entityHeadIndex]) {
 		const realCoord = ToCanvasCoordinates(e.X, e.Y);
 		const realX = realCoord[0];
 		const realY = realCoord[1];
 		if (IsInRange(mouseX, mouseY, realX, realY)) {
+			const name = window.localStorage.getItem(BdaToString(e.Bda));
+			if (name) {
+				ctx.fillText(`\"${name}\"`, topLeftX, row++ * (fontSize + 2), 200);
+			}
 			// Show some detailed information
 			ctx.fillText(e.IsScanner ? "Scanner" : "Device", topLeftX, row++ * (fontSize + 2), 200);
 			ctx.fillText(BdaToString(e.Bda), topLeftX, row++ * (fontSize + 2), 200);
@@ -177,11 +228,10 @@ function RedrawDynamic() {
 }
 
 function CheckClickOnEntity() {
-	for (var e of entities) {
+	for (var e of entityMemory[entityHeadIndex]) {
 		const realCoord = ToCanvasCoordinates(e.X, e.Y);
 		const realX = realCoord[0];
 		const realY = realCoord[1];
-		console.log(mouseX, mouseY, realX, realY);
 		if (IsInRange(mouseX, mouseY, realX, realY)) {
 			document.getElementById("bda").value = BdaToString(e.Bda);
 			break;
@@ -210,7 +260,11 @@ function GetData() {
 
 // Parse raw device data into `entities`. Expects an array of 20B/element
 function ParseRawData(rawData) {
-	entities.length = 0;
+	entityHeadIndex++;
+	if (entityHeadIndex >= EntityMemoryLimit) {
+		entityHeadIndex = 0;
+	}
+	entityMemory[entityHeadIndex].length = 0;
 
 	// 6B BDA, 3*4B (x,y,z), 1B ScannerCount, 1B Flags
 	const singleElement = 20;
@@ -236,7 +290,7 @@ function ParseRawData(rawData) {
 		var sCount = view.getUint8(sCountIdx);
 		var flags = view.getUint8(flagsIdx);
 
-		entities.push({
+		entityMemory[entityHeadIndex].push({
 			Bda: bda, X: x, Y: y, Z: z,
 			ScannerCount: sCount,
 			IsScanner: ((flags & 0b00000001) != 0),
@@ -255,7 +309,7 @@ function DrawScanner(ctx, x, y, z) {
 	// Radial gradient around it
 	const radius = 100;
 	var grad = ctx.createRadialGradient(x, y, 1, x, y, radius);
-	grad.addColorStop(0, `rgba(255,165,0,0.1`);
+	grad.addColorStop(0, `rgba(255,165,0,0.25`);
 	grad.addColorStop(0.9, `rgba(0,0,0,0.0)`);
 
 	ctx.fillStyle = grad;

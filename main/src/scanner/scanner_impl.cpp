@@ -155,10 +155,10 @@ void App::GattsConnect(const Gatts::Type::Connect & p)
 
 void App::GattsDisconnect(const Gatts::Type::Disconnect & p)
 {
+	ESP_LOGI(TAG, "Disconnected");
 	// Disconnected, restart advertising
-	_state = Gatt::StateChar::Advertise;
-
 	_connStatus = ConnectionStatus::Disconnected;
+	_state = Gatt::StateChar::Advertise;
 	_bleGap.StopScanning();
 	_btGap.StopDiscovery();
 	_AdvertiseDefault();

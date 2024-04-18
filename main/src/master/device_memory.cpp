@@ -95,10 +95,10 @@ const ScannerInfo * DeviceMemory::GetScannerToAdvertise() const
 		for (std::size_t j = i + 1; j < _scanners.size(); j++) {
 			// Scanner RSSI between i-j/j-i missing?
 			if (_scannerRssis(i, j) == 0) {
-				return &(_scanners.begin() + i)->Info;
+				return &(_scanners.begin() + j)->Info;
 			}
 			else if (_scannerRssis(j, i) == 0) {
-				return &(_scanners.begin() + j)->Info;
+				return &(_scanners.begin() + i)->Info;
 			}
 		}
 	}
@@ -362,7 +362,7 @@ void DeviceMemory::_UpdateScanner(ScannerIt sc1, ScannerIt sc2, std::int8_t rssi
 		_scannerRssis(sIdx1, sIdx2) = rssi;
 	}
 
-	auto v = Nvs::Cache::Instance().GetValues(_scanners[sIdx1].Info.Bda.Addr);
+	const auto & v = Nvs::Cache::Instance().GetValues(_scanners[sIdx1].Info.Bda.Addr);
 	const std::int8_t refPathLoss = v.RefPathLoss.value_or(PathLoss::DefaultRefPathLoss);
 	const float envFactor = v.EnvFactor.value_or(PathLoss::DefaultEnvFactor);
 	const std::int8_t rssiVal = _scannerRssis(sIdx1, sIdx2);
@@ -373,8 +373,10 @@ void DeviceMemory::_UpdateScanner(ScannerIt sc1, ScannerIt sc2, std::int8_t rssi
 	// it as it is for now - ignore the lower triangular part.
 	_scannerDistances(sIdx1, sIdx2) = PathLoss::LogDistance(rssiVal, envFactor, refPathLoss);
 	ESP_LOGI(TAG,
-	         "Scanner distance [%d-%d]: Rssi: %d, Dist: %.2f, RefPathLoss: %d, EnvFactor: %.2f",
-	         sIdx1, sIdx2, rssiVal, _scannerDistances(sIdx1, sIdx2), refPathLoss, envFactor);
+	         "Scanner distance [%s - %s]: Rssi: %d, Dist: %.2f, RefPathLoss: %d, EnvFactor: %.2f",
+	         ToString(_scanners[sIdx1].Info.Bda.Addr).c_str(),
+	         ToString(_scanners[sIdx2].Info.Bda.Addr).c_str(), rssiVal,
+	         _scannerDistances(sIdx1, sIdx2), refPathLoss, envFactor);
 }
 
 void DeviceMemory::_RemoveScanner(ScannerIt sIt)
@@ -393,10 +395,10 @@ void DeviceMemory::_RemoveScanner(ScannerIt sIt)
 	for (std::size_t i = sIdx + 1; i < size; i++) {
 		for (std::size_t j = 0; j < size; j++) {
 			_scannerDistances(i, j) = _scannerDistances(i - 1, j);
-			_scannerDistances(j, i) = _scannerDistances(j, i-1);
+			_scannerDistances(j, i) = _scannerDistances(j, i - 1);
 
 			_scannerRssis(i, j) = _scannerRssis(i - 1, j);
-			_scannerRssis(j, i) = _scannerRssis(j, i-1);
+			_scannerRssis(j, i) = _scannerRssis(j, i - 1);
 		}
 	}
 	_scannerDistances.Reshape(size - 1, size - 1);

@@ -63,6 +63,10 @@ Together, these 2 are the parameters for a Log Distance Path Loss function used 
 
 ## Build, Configure & Flash
 
+For vscode, use `esp_idf_project_configuration.json` - `CTRL+SHIFT+P` -> `ESP-IDF: Select project configuration`.
+
+Or directly with `idf.py`:
+
 Master
 ```
 idf.py -B build/master -D SDKCONFIG_DEFAULTS="sdkconfig.master" menuconfig

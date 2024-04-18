@@ -75,7 +75,11 @@ void Wrapper::SetRawAdvertisingData(std::span<std::uint8_t> data)
 
 void Wrapper::StartAdvertising(esp_ble_adv_params_t * params, float time)
 {
+	const bool isTimerActive = xTimerIsTimerActive(_advTimerHandle);
 	if (_isAdvertising) {
+		if (isTimerActive && (time <= 0.0f)) {
+			xTimerStop(_advTimerHandle, portMAX_DELAY);
+		}  // else we could increase the timer length?
 		return;
 	}
 	ESP_ERROR_CHECK(esp_ble_gap_start_advertising(params));

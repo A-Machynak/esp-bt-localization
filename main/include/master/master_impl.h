@@ -16,14 +16,6 @@
 
 #include <freertos/semphr.h>
 
-namespace
-{
-
-/// @brief Maximum number of scanners.
-constexpr std::size_t ScannerConnectionLimit = 32 /*MASTER_MAX_SCANNER_CONNECTIONS*/;
-
-}  // namespace
-
 namespace Master::Impl
 {
 

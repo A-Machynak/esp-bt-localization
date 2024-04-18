@@ -2,6 +2,7 @@
 
 #include "math/matrix.h"
 
+#include <cstddef>
 #include <span>
 
 namespace Math

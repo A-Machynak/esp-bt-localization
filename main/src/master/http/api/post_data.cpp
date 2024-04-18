@@ -47,13 +47,6 @@ PostDataEntry DevicesPostDataView::Next()
 
 	const Type::ValueType type = static_cast<Type::ValueType>(Data[Head]);
 	std::span<const std::uint8_t> tData(Data.begin() + Head + 1, Data.end());
-	std::string s;
-	for (auto d : tData) {
-		s += std::to_string(d) + " ";
-	}
-	ESP_LOGI("PDE", "type %d, %d, %d; [%s]", (int)type, int(Data.size()), int(tData.size()),
-		s.c_str());
-
 
 	switch (type) {
 	case Type::ValueType::SystemMsg:

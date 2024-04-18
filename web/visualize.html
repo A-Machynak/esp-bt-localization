@@ -56,6 +56,22 @@
 			</tr>
 		</table>
 		<hr>
+
+		<table style="margin-left: auto;margin-right: auto;">
+			<tr>
+				<th>Saved position count<br>(path visualization)</th>
+				<th></th>
+			</tr>
+			<tr>
+				<td><input type="number" step="1" id="set-path-limit-value" min="1" value="3" max="20"></td>
+				<td></td>
+			</tr>
+			<tr>
+				<td><button id="set-path-limit">Set position count</button></td>
+			</tr>
+		</table>
+		<hr>
+
 		<table style="margin-left: auto;margin-right: auto;">
 			<tr>
 				<td><button id="sys-msg-restart">Restart ESP</button></td>
@@ -66,8 +82,6 @@
 		<h2>Info</h2>
 		<textarea id="textarea" rows="7" cols="75" readonly></textarea>
 	</div>
-
-	<script src="visualize.js"></script>
 	<!-- JS will be embedded by the python script -->
 </body>
 

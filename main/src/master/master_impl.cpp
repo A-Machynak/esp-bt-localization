@@ -417,9 +417,6 @@ void App::UpdateDeviceDataLoop()
 	readCharData.reserve(10);
 
 	for (;;) {
-		ESP_LOGI(TAG, "free %lu internal %lu min %lu", esp_get_free_heap_size(),
-		         esp_get_free_internal_heap_size(), esp_get_minimum_free_heap_size());
-
 		// First make a copy of each scanner's connection id and handle
 		if (xSemaphoreTake(_memMutex, portMAX_DELAY)) {
 			const auto & scanners = _memory.GetScanners();  // Read
@@ -459,7 +456,7 @@ void App::UpdateDeviceDataLoop()
 
 				// and finally update the HTTP server data
 				_httpServer.SetDevicesGetData(
-				    std::span(reinterpret_cast<char *>(rawData.data()), rawData.size()));
+				    std::span<char>(reinterpret_cast<char *>(rawData.data()), rawData.size()));
 			}
 			else {
 				ESP_LOGD(TAG, "Mtx take fail (UpdateDeviceDataLoop[2])");

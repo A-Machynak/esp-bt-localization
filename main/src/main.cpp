@@ -40,6 +40,7 @@
         .ScanModePeriodClassic = CONFIG_SCANNER_SCAN_BOTH_PERIOD_CLASSIC,
         .ScanModePeriodBle = CONFIG_SCANNER_SCAN_BOTH_PERIOD_BLE,
     #endif
+        .DeviceMemoryCfg = {}
     };
 
     static Scanner::App app(cfg);
