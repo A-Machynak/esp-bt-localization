@@ -111,10 +111,14 @@ void App::OnHttpServerUpdate(std::span<const char> data)
 		    Overload{
 		        [&](const HttpApi::Type::SystemMsg & t) { ProcessSystemMessage(t.Value()); },
 		        [&](const HttpApi::Type::RefPathLoss & t) {
-			        Nvs::SetRefPathLoss(t.Mac(), t.Value());
+			        Nvs::Cache::Instance().SetRefPathLoss(t.Mac(), t.Value());
 		        },
-		        [&](const HttpApi::Type::EnvFactor & t) { Nvs::SetEnvFactor(t.Mac(), t.Value()); },
-		        [&](const HttpApi::Type::MacName & t) { Nvs::SetMacName(t.Mac(), t.Value()); },
+		        [&](const HttpApi::Type::EnvFactor & t) {
+			        Nvs::Cache::Instance().SetEnvFactor(t.Mac(), t.Value());
+		        },
+		        [&](const HttpApi::Type::MacName & t) {
+			        Nvs::Cache::Instance().SetMacName(t.Mac(), t.Value());
+		        },
 		        [&](std::monostate t) {},
 		    },
 		    v);

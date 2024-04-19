@@ -42,57 +42,62 @@ Cache & Cache::Instance()
 	return cache;
 }
 
-const Cache::CachedValues & Cache::GetValues(const std::array<std::uint8_t, 6> & key)
+const Cache::CachedValues & Cache::GetValues(std::span<const std::uint8_t, 6> key)
 {
-	auto it = std::find_if(_vec.begin(), _vec.end(),
-	                       [&](const Cache::KeyValue & kv) { return key == kv.Key; });
+	auto it = std::find_if(_vec.begin(), _vec.end(), [&](const Cache::KeyValue & kv) {
+		return std::equal(key.begin(), key.end(), kv.Key.begin());
+	});
 
 	if (it == _vec.end()) {  // Not found
 		const auto ef = GetEnvFactor(key);
 		const auto pl = GetRefPathLoss(key);
 
 		if (_vec.size() >= SizeLimit) {
-			_vec[_head] = {key, Cache::CachedValues{.RefPathLoss = pl, .EnvFactor = ef}};
+			std::copy(key.begin(), key.end(), _vec[_head].Key.begin());
+			_vec[_head].Value = Cache::CachedValues{.RefPathLoss = pl, .EnvFactor = ef};
 			const KeyValue & item = _vec[_head];
 			_head = (_head >= _vec.size() - 1) ? 0 : (_head + 1);
 			return item.Value;
 		}
 
-		const KeyValue & item =
-		    _vec.emplace_back(key, Cache::CachedValues{.RefPathLoss = pl, .EnvFactor = ef});
+		KeyValue & item = _vec.emplace_back(
+		    std::array<std::uint8_t, 6>{}, Cache::CachedValues{.RefPathLoss = pl, .EnvFactor = ef});
+		std::copy(key.begin(), key.end(), item.Key.begin());
 		return item.Value;
 	}
 	return it->Value;
 }
 
-std::optional<std::string> Cache::GetMacName(const std::array<std::uint8_t, 6> & key)
+std::optional<std::string> Cache::GetMacName(std::span<const std::uint8_t, 6> key)
 {
 	return ::Master::Nvs::GetMacName(key);
 }
 
-void Cache::SetRefPathLoss(const std::array<std::uint8_t, 6> & key, std::int8_t pl)
+void Cache::SetRefPathLoss(std::span<const std::uint8_t, 6> key, std::int8_t pl)
 {
 	::Master::Nvs::SetRefPathLoss(key, pl);
 
-	auto it = std::find_if(_vec.begin(), _vec.end(),
-	                       [&](const Cache::KeyValue & kv) { return key == kv.Key; });
+	auto it = std::find_if(_vec.begin(), _vec.end(), [&](const Cache::KeyValue & kv) {
+		return std::equal(key.begin(), key.end(), kv.Key.begin());
+	});
 	if (it != _vec.end()) {
 		it->Value.RefPathLoss.emplace(pl);
 	}
 }
 
-void Cache::SetEnvFactor(const std::array<std::uint8_t, 6> & key, float envFactor)
+void Cache::SetEnvFactor(std::span<const std::uint8_t, 6> key, float envFactor)
 {
 	::Master::Nvs::SetEnvFactor(key, envFactor);
 
-	auto it = std::find_if(_vec.begin(), _vec.end(),
-	                       [&](const Cache::KeyValue & kv) { return key == kv.Key; });
+	auto it = std::find_if(_vec.begin(), _vec.end(), [&](const Cache::KeyValue & kv) {
+		return std::equal(key.begin(), key.end(), kv.Key.begin());
+	});
 	if (it != _vec.end()) {
 		it->Value.RefPathLoss.emplace(envFactor);
 	}
 }
 
-void Cache::SetMacName(const std::array<std::uint8_t, 6> & key, std::span<const char> name)
+void Cache::SetMacName(std::span<const std::uint8_t, 6> key, std::span<const char> name)
 {
 	::Master::Nvs::SetMacName(key, name);
 }

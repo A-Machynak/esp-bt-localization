@@ -26,21 +26,19 @@ public:
 	/// @brief Get cached values
 	/// @param key key
 	/// @return cached values
-	const CachedValues & GetValues(const std::array<std::uint8_t, 6> & key);
+	const CachedValues & GetValues(std::span<const std::uint8_t, 6> key);
 
 	/// @brief MacName getter; not cached. For convenience.
 	/// @param key key
 	/// @return mac name
-	std::optional<std::string> GetMacName(const std::array<std::uint8_t, 6> & key);
+	std::optional<std::string> GetMacName(std::span<const std::uint8_t, 6> key);
 
 	/// @brief NVS Setters which cache some values
 	/// @{
-	void SetRefPathLoss(const std::array<std::uint8_t, 6> & key, std::int8_t pl);
-	void SetEnvFactor(const std::array<std::uint8_t, 6> & key, float envFactor);
-	void SetMacName(const std::array<std::uint8_t, 6> & key, std::span<const char> name);
+	void SetRefPathLoss(std::span<const std::uint8_t, 6> key, std::int8_t pl);
+	void SetEnvFactor(std::span<const std::uint8_t, 6> key, float envFactor);
+	void SetMacName(std::span<const std::uint8_t, 6> key, std::span<const char> name);
 	/// @}
-
-	using Key = std::array<std::uint8_t, 6>;
 
 private:
 	Cache();
