@@ -1,14 +1,54 @@
 
 menu "ESP Localization"
     choice MASTER_OR_SCANNER
-        prompt "Select Master or Scanner"
+        prompt "Select Master, Scanner or Tag"
         default MASTER
 
     config MASTER
         bool "Device acts as a Master"
     config SCANNER
         bool "Device acts as a Scanner"
+    config TAG
+        bool "Device acts as a Tag"
     endchoice
+
+    # TAG
+    menu "TAG"
+        depends on TAG
+        config TAG_MINIMUM_ADVERTISING_INTERVAL
+            int "Min advertising"
+            range 32 16384
+            default 400
+            help
+                Minimum advertising interval, expressed as N * 0.625msec.
+
+        config TAG_MAXIMUM_ADVERTISING_INTERVAL
+            int "Max advertising"
+            range 32 16384
+            default 800
+            help
+                Maximum advertising interval, expressed as N * 0.625msec.
+
+        choice TAG_ADVERTISING_CHANNEL_CHOICE
+            prompt "Advertising channel"
+            default TAG_ADVERTISING_CHANNEL_SPECIFIC
+        help
+            Choose to advertise on all channels or select specific ones.
+
+        config TAG_ADVERTISING_CHANNEL_ALL
+            bool "All channels"
+        config TAG_ADVERTISING_CHANNEL_SPECIFIC
+            bool "Specific channels"
+        endchoice
+
+        config TAG_ADVERTISING_CHANNEL
+            depends on TAG_ADVERTISING_CHANNEL_SPECIFIC
+            int "Max advertising"
+            range 37 39
+            default 37
+            help
+                Advertise on specific advertising channel.
+    endmenu
 
     # Scanner
     menu "Scanner"

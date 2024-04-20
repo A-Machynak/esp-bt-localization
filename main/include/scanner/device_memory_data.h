@@ -59,7 +59,7 @@ private:
 
 		std::int8_t Average() const;
 
-	private:
+	public:
 		constexpr static std::uint8_t Size = 10;
 		std::array<std::int8_t, Size> Window;
 		std::uint8_t Idx{0};

@@ -32,7 +32,7 @@ void DeviceMemory::AddDevice(const Bt::Device & device)
 	// Try to find this device
 	const auto it = std::find_if(_devData.begin(), _devData.end(), [&](const DeviceInfo & dev) {
 		return std::equal(device.Bda.Addr.begin(), device.Bda.Addr.end(),
-		                  dev.GetDeviceData().Data.data());
+		                  dev.GetDeviceData().View.Mac().begin());
 	});
 
 	if (it != _devData.end()) {

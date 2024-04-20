@@ -15,6 +15,8 @@ by the connected device using `GATT`.
 A "Master" device is used as an aggregator of data saved in Scanners, which listens for BLE Advertisements
 from Scanners, connects to them, reads their BDA and RSSI values and attempts to approximate the devices' positions.
 
+A "Tag" is a device, which keeps sending BLE Advertisements.
+
 <hr>
 
 In order to find the `Scanner <-> Scanner` distance and therefore approximate the position of each Scanner,
@@ -69,14 +71,20 @@ Or directly with `idf.py`:
 
 Master
 ```
-idf.py -B build/master -D SDKCONFIG_DEFAULTS="sdkconfig.master" menuconfig
-idf.py -B build/master -D SDKCONFIG_DEFAULTS="sdkconfig.master" build flash monitor
+idf.py -B build/master -D SDKCONFIG_DEFAULTS="config/sdkconfig.master" menuconfig
+idf.py -B build/master -D SDKCONFIG_DEFAULTS="config/sdkconfig.master" build flash monitor
 ```
 
 Scanner
 ```
-idf.py -B build/scanner -D SDKCONFIG_DEFAULTS="sdkconfig.scanner" menuconfig
-idf.py -B build/scanner -D SDKCONFIG_DEFAULTS="sdkconfig.scanner" build flash monitor
+idf.py -B build/scanner -D SDKCONFIG_DEFAULTS="config/sdkconfig.scanner" menuconfig
+idf.py -B build/scanner -D SDKCONFIG_DEFAULTS="config/sdkconfig.scanner" build flash monitor
+```
+
+Tag
+```
+idf.py -B build/tag -D SDKCONFIG_DEFAULTS="config/sdkconfig.tag" menuconfig
+idf.py -B build/tag -D SDKCONFIG_DEFAULTS="config/sdkconfig.tag" build flash monitor
 ```
 
 ## Implementation notes
@@ -139,12 +147,12 @@ POST requests expect raw bytes in the format `[Type0][Data0][Type1][Data1]...`, 
 
 `POST /api/config`
 
-| Type | Name                   | Expected data                         |
-| ---- | ---------------------- | ------------------------------------- |
-| 0    | System message         | 1B - type of message                  |
-| 1    | Set reference RSSI     | 6B (MAC) + 1B (RSSI, `int8`)          |
-| 2    | Set environment factor | 6B (MAC) + 4B (EnvFactor, `float`)    |
-| 3    | Map MAC to a name      | 6B (MAC) + up to 16B (name, `string`) |
+| Type | Name                       | Expected data                         |
+| ---- | -------------------------- | ------------------------------------- |
+| 0    | System message             | 1B - type of message                  |
+| 1    | Set reference RSSI         | 6B (MAC) + 1B (RSSI, `int8`)          |
+| 2    | Set environment factor     | 6B (MAC) + 4B (EnvFactor, `float`)    |
+| 3    | Map MAC to a name (Unused) | 6B (MAC) + up to 16B (name, `string`) |
 
 `System message types`
 | Type | Name            | Description      |

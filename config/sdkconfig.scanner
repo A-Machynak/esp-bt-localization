@@ -8,9 +8,6 @@ CONFIG_SCANNER=y
 # CONFIG_SCANNER_SCAN_BOTH_PERIOD_CLASSIC=5  # Period to change Classic and BLE Scans (max. 30) [s]
 # CONFIG_SCANNER_SCAN_BOTH_PERIOD_BLE=15  # Period to change Classic and BLE Scans (max. 30) [s]
 
-# Target
-# CONFIG_IDF_TARGET=esp32c3
-
 # C++
 CONFIG_COMPILER_CXX_EXCEPTIONS=y
 

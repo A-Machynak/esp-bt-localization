@@ -241,11 +241,13 @@ std::span<std::uint8_t> DeviceMemory::SerializeOutput()
 	}
 
 	// Serialize devices
+	std::size_t devicesSerialized = 0;
 	for (std::size_t i = 0; i < _devices.size(); i++) {
 		const auto & dev = _devices.at(i);
 		if (dev.IsInvalidPos()) {
 			continue;
 		}
+		devicesSerialized++;
 
 		const std::span<std::uint8_t, DeviceOut::Size> out(_serializedData.data() + offset,
 		                                                   DeviceOut::Size);
@@ -257,7 +259,7 @@ std::span<std::uint8_t> DeviceMemory::SerializeOutput()
 
 		offset += DeviceOut::Size;
 	}
-	ESP_LOGI(TAG, "Serialized %d scanners, %d devices", _scanners.size(), _devices.size());
+	ESP_LOGI(TAG, "Serialized %d scanners, %d devices", _scanners.size(), devicesSerialized);
 
 	return _serializedData;
 }
@@ -372,8 +374,7 @@ void DeviceMemory::_UpdateScanner(ScannerIt sc1, ScannerIt sc2, std::int8_t rssi
 	// Since AnchorDistance3D only uses the upper triangular part of the matrix, we will just leave
 	// it as it is for now - ignore the lower triangular part.
 	_scannerDistances(sIdx1, sIdx2) = PathLoss::LogDistance(rssiVal, envFactor, refPathLoss);
-	ESP_LOGI(TAG,
-	         "Scanner distance [%s - %s]: Rssi: %d, Dist: %.2f, RefPathLoss: %d, EnvFactor: %.2f",
+	ESP_LOGI(TAG, "[%s - %s]: Rssi: %d, Dist: %.2f, RefPathLoss: %d, EnvFactor: %.2f",
 	         ToString(_scanners[sIdx1].Info.Bda.Addr).c_str(),
 	         ToString(_scanners[sIdx2].Info.Bda.Addr).c_str(), rssiVal,
 	         _scannerDistances(sIdx1, sIdx2), refPathLoss, envFactor);

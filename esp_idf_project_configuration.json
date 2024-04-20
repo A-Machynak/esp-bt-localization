@@ -5,7 +5,7 @@
       "ninjaArgs": [],
       "buildDirectoryPath": "",
       "sdkconfigDefaults": [
-        "sdkconfig.master"
+        "config/sdkconfig.master"
       ],
       "sdkconfigFilePath": ""
     },
@@ -31,7 +31,33 @@
       "ninjaArgs": [],
       "buildDirectoryPath": "",
       "sdkconfigDefaults": [
-        "sdkconfig.scanner"
+        "config/sdkconfig.scanner"
+      ],
+      "sdkconfigFilePath": ""
+    },
+    "env": {},
+    "flashBaudRate": "115200",
+    "idfTarget": "",
+    "monitorBaudRate": "115200",
+    "openOCD": {
+      "debugLevel": 0,
+      "configs": [],
+      "args": []
+    },
+    "tasks": {
+      "preBuild": "",
+      "preFlash": "",
+      "postBuild": "",
+      "postFlash": ""
+    }
+  },
+  "tag": {
+    "build": {
+      "compileArgs": [],
+      "ninjaArgs": [],
+      "buildDirectoryPath": "",
+      "sdkconfigDefaults": [
+        "config/sdkconfig.tag"
       ],
       "sdkconfigFilePath": ""
     },

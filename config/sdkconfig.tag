@@ -1,17 +1,7 @@
 # https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/kconfig.html
 
-# Master Specific
-CONFIG_MASTER=y
-# CONFIG_WIFI_AS_STA=y
-# CONFIG_WIFI_AS_AP=y
-# CONFIG_WIFI_SSID="espwifi0"
-# CONFIG_WIFI_PASSWORD="espwifi0"
-# CONFIG_WIFI_CHANNEL=1
-CONFIG_PATH_LOSS_REFERENCE=50
-CONFIG_PATH_LOSS_ENV_FACTOR=20
-
-# Target
-# CONFIG_IDF_TARGET=esp32c3
+# Tag Specific
+CONFIG_TAG=y
 
 # C++
 CONFIG_COMPILER_CXX_EXCEPTIONS=y
@@ -21,14 +11,10 @@ CONFIG_BT_ENABLED=y
 CONFIG_BT_BLE_ENABLED=y
 CONFIG_BLUEDROID_ENABLED=y
 
-CONFIG_BT_GATTC_ENABLE=y
-
 CONFIG_BT_BLE_50_FEATURES_SUPPORTED=y  # Might throw undefined reference to esp_ble_X if not defined for some targets
 CONFIG_BT_BLE_42_FEATURES_SUPPORTED=y  # Might throw undefined reference to esp_ble_X if not defined for some targets
 
 CONFIG_BTDM_CTRL_MODE_BLE_ONLY=y # BLE only
-CONFIG_BLE_SCAN_DUPLICATE=y
-CONFIG_SCAN_DUPLICATE_BY_DEVICE_ADDR=y
 
 # Flash Size
 CONFIG_ESPTOOLPY_FLASHSIZE="4MB"

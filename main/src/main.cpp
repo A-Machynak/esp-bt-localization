@@ -44,8 +44,25 @@
     };
 
     static Scanner::App app(cfg);
+#elif defined(CONFIG_TAG)
+    #define MAIN_TAG "Tag"
+    #include "tag/tag.h"
+
+    Tag::AppConfig cfg {
+        .AdvIntMin = CONFIG_TAG_MINIMUM_ADVERTISING_INTERVAL,
+        .AdvIntMax = CONFIG_TAG_MAXIMUM_ADVERTISING_INTERVAL,
+        #if defined(TAG_ADVERTISING_CHANNEL_ALL)
+        .AdvertiseOnAllChannels = true,
+        .ChannelToAdvertiseOn = {},
+        #else
+        .AdvertiseOnAllChannels = false,
+        .ChannelToAdvertiseOn = CONFIG_TAG_ADVERTISING_CHANNEL,
+        #endif
+    };
+
+    static Tag::App app(cfg);
 #else
-    #error "'MASTER' or 'SCANNER' isn't defined"
+    #error "'MASTER', 'SCANNER' or 'TAG' isn't defined"
 #endif
 
 extern "C" void app_main(void)
