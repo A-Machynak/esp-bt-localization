@@ -24,12 +24,7 @@ the "GATT Scanner Service" provides a way to switch between a "Scanning" mode an
 
 <hr>
 
-Master provides the output in a form of a webpage. An HTTP server is running on port 80, with `/` and `/api/devices` URIs:
-
-| URI | Info |
-| --- | ---- |
-| `/` | Index page, basic visualization |
-| `/api/devices` | Returns an array with 19B/element; see `Visualization` for the format specification |
+Master provides the output in a form of a webpage. An HTTP server is running on port 80 (`192.168.4.1` for AP).
 
 For Wifi, either AP (creates an access point) or STA (connects to an existing one) mode needs to be selected in the configuration
 (with SSID and password). 

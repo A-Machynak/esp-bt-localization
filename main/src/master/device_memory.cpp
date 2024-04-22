@@ -378,11 +378,11 @@ void DeviceMemory::_UpdateScanner(ScannerIt sc1, ScannerIt sc2, std::int8_t rssi
 	const float envFactor = v.EnvFactor.value_or(PathLoss::DefaultEnvFactor);
 	const std::int8_t rssiVal = _scannerRssis(sIdx1, sIdx2);
 
-	// Scanner distances should be symmetric but...setting different ref path loss/env factor per
-	// scanner makes this kinda problematic, since the distances might be very different.
-	// Since AnchorDistance3D only uses the upper triangular part of the matrix, we will just leave
-	// it as it is for now - ignore the lower triangular part.
 	_scannerDistances(sIdx1, sIdx2) = PathLoss::LogDistance(rssiVal, envFactor, refPathLoss);
+	if (_scannerRssis(sIdx2, sIdx1) == 0) {  // dist(i, j) == dist(j, i)
+		_scannerRssis(sIdx2, sIdx1) = _scannerRssis(sIdx1, sIdx2);
+		_scannerDistances(sIdx2, sIdx1) = _scannerDistances(sIdx1, sIdx2);
+	}
 	ESP_LOGI(TAG, "%s found %s: Rssi: %d, Dist: %.2f, RefPathLoss: %d, EnvFactor: %.2f",
 	         ToString(_scanners[sIdx1].Info.Bda.Addr).c_str(),
 	         ToString(_scanners[sIdx2].Info.Bda.Addr).c_str(), rssiVal,

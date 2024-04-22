@@ -25,20 +25,6 @@ void DeviceMemory::AddDevice(const Bt::Device & device)
 		return;
 	}
 
-	if (_devData.size() >= _cfg.MemorySizeLimit) {
-		// Try to make some space
-		auto min = std::min_element(
-		    _devData.begin(), _devData.end(), [](const DeviceInfo & lhs, const DeviceInfo & rhs) {
-			    return lhs.GetDeviceData().View.Rssi() < rhs.GetDeviceData().View.Rssi();
-		    });
-		constexpr std::size_t Tolerance = 3;
-		if (min->GetDeviceData().View.Rssi() > (device.GetRssi() - Tolerance)) {
-			// Found device with smaller RSSI; don't erase it
-			return;
-		}
-		_devData.erase(min);
-	}
-
 	// Remove old devices
 	RemoveStaleDevices();
 
@@ -52,6 +38,47 @@ void DeviceMemory::AddDevice(const Bt::Device & device)
 		// Found the device, just update it
 		it->Update(device.GetRssi());
 		return;
+	}
+
+	// Device not found yet; try to make some space for it
+	if (_devData.size() >= _cfg.MemorySizeLimit) {
+		constexpr std::size_t RssiTolerance = 3;
+
+		// Find a device with the lowest RSSI and random MAC
+		auto min = std::min_element(
+		    _devData.begin(), _devData.end(),
+		    [](const DeviceInfo & value, const DeviceInfo & smallest) {
+			    const auto & vView = value.GetDeviceData().View;
+			    const auto & sView = smallest.GetDeviceData().View;
+			    if (!sView.IsAddrTypePublic()) {
+				    // 'smallest' has random MAC
+				    if (!vView.IsAddrTypePublic()) {
+					    return vView.Rssi() < sView.Rssi();  // ok - both random - compare
+				    }
+				    return false;  // don't swap smallest with public MAC
+			    }  // else 'smallest' has public MAC and we are only looking for random
+			    if (vView.IsAddrTypePublic()) {
+				    return true;  // random MAC - new smallest
+			    }
+			    return false;
+		    });
+
+		const bool minIsPublic = min->GetDeviceData().View.IsAddrTypePublic();
+		const bool minIsCloser =
+		    min->GetDeviceData().View.Rssi() > (device.GetRssi() - RssiTolerance);
+
+		if (device.IsBle() && (device.GetBle().AddrType == BLE_ADDR_TYPE_PUBLIC)) {
+			// Device has a public MAC; prioritize saving it
+			if (minIsPublic && minIsCloser) {
+				return;  // Didn't find any device with random MAC + new device has bigger RSSI
+			}
+		}
+		else {  // Device has a random MAC
+			if (minIsPublic || minIsCloser) {
+				return;
+			}
+		}
+		_devData.erase(min);
 	}
 
 	// Device doesn't exist, attempt to associate
