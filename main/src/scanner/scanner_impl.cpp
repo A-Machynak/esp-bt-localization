@@ -87,8 +87,6 @@ void App::GapBleScanResult(const Gap::Ble::ScanResult & p)
 		_memory.AddDevice(dev);
 		xSemaphoreGive(_memMutex);
 	}
-
-	_CheckAndUpdateDevicesData();
 }
 
 void App::GapBleAdvStopCmpl(const Gap::Ble::Type::AdvStopCmpl & p)
@@ -119,8 +117,6 @@ void App::GapBtDiscRes(const Gap::Bt::DiscRes & p)
 		_memory.AddDevice(dev);
 		xSemaphoreGive(_memMutex);
 	}
-
-	_CheckAndUpdateDevicesData();
 }
 
 void App::GapBtDiscStateChanged(const Gap::Bt::DiscStateChanged & p)
@@ -177,43 +173,50 @@ void App::GattsRead(const Gatts::Type::Read & p)
 	constexpr std::size_t SizeLimit =
 	    std::min(512u, ((ESP_GATT_MAX_MTU_SIZE - 1) / Core::DeviceDataView::Size)
 	                       * Core::DeviceDataView::Size);
+	esp_gatt_rsp_t rsp{};
+	rsp.attr_value.handle = p.handle;
+	rsp.attr_value.auth_req = ESP_GATT_AUTH_REQ_NONE;
+	rsp.attr_value.offset = p.offset;
 
-	_CheckAndUpdateDevicesData();
-
-	const std::size_t totalOffset = movingOffset + p.offset;
-	const std::size_t size = std::min(SizeLimit, _serializeVec.size() - totalOffset);
-	if (totalOffset > _serializeVec.size() || size > _serializeVec.size()) {
-		if (p.need_rsp) {
-			esp_ble_gatts_send_response(_appInfo->GattIf, p.conn_id, p.trans_id, ESP_GATT_OK,
-			                            nullptr);
-		}
+	if (p.offset != 0) {
+		// Don't update; send the rest of the data
+		if ((movingOffset + p.offset) < _serializeVec.size()) {
+			const std::size_t bToSend = SizeLimit - p.offset;
+			const std::size_t size = std::min(bToSend, _serializeVec.size() - bToSend);
+			std::copy_n(_serializeVec.data() + movingOffset + p.offset, size, rsp.attr_value.value);
+			rsp.attr_value.len = size;
+		}  // else no data
+		esp_ble_gatts_send_response(_appInfo->GattIf, p.conn_id, p.trans_id, ESP_GATT_OK, &rsp);
 		return;
 	}
 
-	// If there is more data and this is not the last "block", indicate it with "ESP_GATT_MORE"
-	const esp_gatt_status_t status =
-	    ((_serializeVec.size() > SizeLimit) && ((movingOffset + SizeLimit) < _serializeVec.size()))
-	        ? ESP_GATT_MORE
-	        : ESP_GATT_OK;
+	// Update
+	_CheckAndUpdateDevicesData();
+
+	if ((_serializeVec.size() == 0) && p.need_rsp) {
+		// No data after update
+		esp_ble_gatts_send_response(_appInfo->GattIf, p.conn_id, p.trans_id, ESP_GATT_OK, &rsp);
+		return;
+	}
+
+	if (movingOffset >= _serializeVec.size()) {
+		// Something got deleted since last call
+		movingOffset = 0;
+	}
 
 	// Build a response
-	esp_gatt_rsp_t rsp;
-	rsp.attr_value.handle = p.handle;
-	rsp.attr_value.auth_req = ESP_GATT_AUTH_REQ_NONE;
-	std::copy_n(_serializeVec.data() + totalOffset, size, rsp.attr_value.value);
+	const std::size_t size = std::min(SizeLimit, _serializeVec.size());
+	std::copy_n(_serializeVec.data() + movingOffset, size, rsp.attr_value.value);
 	rsp.attr_value.len = size;
-	rsp.attr_value.offset = p.offset;
-	esp_ble_gatts_send_response(_appInfo->GattIf, p.conn_id, p.trans_id, status, &rsp);
+	esp_ble_gatts_send_response(_appInfo->GattIf, p.conn_id, p.trans_id, ESP_GATT_OK, &rsp);
 
-	if (p.offset == 0) {
-		// Move our custom offset.
-		if ((movingOffset + SizeLimit) > _serializeVec.size()) {
-			movingOffset = 0;
-		}
-		else {
-			// Only shift enough to still be full
-			movingOffset = std::min(movingOffset + SizeLimit, _serializeVec.size() - SizeLimit);
-		}
+	if ((movingOffset + SizeLimit) >= _serializeVec.size()) {
+		// Back to beginning
+		movingOffset = 0;
+	}
+	else {
+		// Only shift enough to still be full
+		movingOffset = std::min(movingOffset + SizeLimit, _serializeVec.size() - SizeLimit);
 	}
 }
 

@@ -21,9 +21,22 @@ DeviceMemory::DeviceMemory(const AppConfig::DeviceMemoryConfig & cfg)
 
 void DeviceMemory::AddDevice(const Bt::Device & device)
 {
-	if (_devData.size() >= _cfg.MemorySizeLimit) {
-		ESP_LOGW(TAG, "Reached size limit");
+	if (device.GetRssi() < _cfg.MinRssi) {
 		return;
+	}
+
+	if (_devData.size() >= _cfg.MemorySizeLimit) {
+		// Try to make some space
+		auto min = std::min_element(
+		    _devData.begin(), _devData.end(), [](const DeviceInfo & lhs, const DeviceInfo & rhs) {
+			    return lhs.GetDeviceData().View.Rssi() < rhs.GetDeviceData().View.Rssi();
+		    });
+		constexpr std::size_t Tolerance = 3;
+		if (min->GetDeviceData().View.Rssi() > (device.GetRssi() - Tolerance)) {
+			// Found device with smaller RSSI; don't erase it
+			return;
+		}
+		_devData.erase(min);
 	}
 
 	// Remove old devices
@@ -87,6 +100,7 @@ void DeviceMemory::SerializeData(std::vector<std::uint8_t> & out)
 		                                                         Core::DeviceDataView::Size);
 		_devData.at(i).Serialize(span);
 	}
+	ESP_LOGI(TAG, "Serialized %d devices", _devData.size());
 }
 
 void DeviceMemory::RemoveStaleDevices()

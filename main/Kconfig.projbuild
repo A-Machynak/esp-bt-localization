@@ -86,12 +86,48 @@ menu "ESP Localization"
             default 15
             help
                 How long to scan with BLE before switching to BT Classic [s]
+        config SCANNER_DEVICE_COUNT_LIMIT
+            int "Max devices"
+            range 1 128
+            default 28
+            help
+                Maximum amount of devices saved. Note: Only 7 devices can be sent at once - keep this number low!
+                Preferably use multiples of 7.
+        config SCANNER_ENABLE_ASSOCIATION
+            bool "Enable association"
+            default y
+            help
+                BLE devices with same advertising data will be merged into a single device.
+        config SCANNER_MIN_RSSI
+            int "Minimum RSSI [dBm]"
+            range -120 0
+            default -95
+            help
+                Minimum RSSI to save a device.
+        config SCANNER_STALE_LIMIT
+            int "Remove limit [ms]"
+            range 1000 60000
+            default 15000
+            help
+                Maximum interval in milliseconds, after which a device is removed if not updated.
     endmenu
 
-    
     # Master
     menu "Master"
         depends on MASTER
+
+        config MASTER_GATT_READ_INTERVAL
+            int "Gatt Read interval [ms]"
+            range 100 60000
+            default 1000
+            help
+                Time to wait in milliseconds before sending GATT Read to each Scanner [ms].
+        config MASTER_DELAY_BETWEEN_GATT_READS
+            int "Gatt Read delay"
+            range 100 5000
+            default 500
+            help
+                Time to wait between each GATT Read [ms]
         # WiFi
         menu "WiFi"
             choice WIFI_AP_OR_STA

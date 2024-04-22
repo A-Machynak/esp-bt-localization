@@ -165,7 +165,7 @@ function UpdateEntities() {
 			DrawScanner(ctx, realCoord[0], realCoord[1], e.Z);
 		}
 		else {
-			DrawDevice(ctx, realCoord[0], realCoord[1], e.Z);
+			DrawDevice(ctx, e.Bda, realCoord[0], realCoord[1], e.Z);
 		}
 	}
 }
@@ -317,8 +317,10 @@ function DrawScanner(ctx, x, y, z) {
 	ctx.fill();
 }
 
-function DrawDevice(ctx, x, y, z) {
-	const color = `rgb(0, 165, ${Math.floor(Clamp(z * 12, 0, 128))})`;
+function DrawDevice(ctx, bda, x, y, z) {
+	// this will read very often, but it should be fine(?)
+	const name = window.localStorage.getItem(BdaToString(bda));
+	const color = `rgb(${Math.floor(Clamp(z * 12, 0, 128))}, 165, ${name ? '165' : '0'})`;
 	DrawCircle(ctx, x, y, 5, color);
 }
 

@@ -35,7 +35,8 @@ For Wifi, either AP (creates an access point) or STA (connects to an existing on
 (with SSID and password). 
 
 ## Requirements
-- For a Scanner: ESP32 capable of BLE or Bluetooth Classic+BLE (Dual mode)
+- ESP-IDF v5.2
+- For a Scanner or Tag: ESP32 capable of BLE or Bluetooth Classic+BLE (Dual mode)
 - For a Master: ESP32 capable of BLE+WiFi
 - 4MB Flash
 

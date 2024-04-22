@@ -94,11 +94,17 @@ const ScannerInfo * DeviceMemory::GetScannerToAdvertise() const
 	for (std::size_t i = 0; i < _scanners.size(); i++) {
 		for (std::size_t j = i + 1; j < _scanners.size(); j++) {
 			// Scanner RSSI between i-j/j-i missing?
+			const ScannerInfo * iInfo = &(_scanners.begin() + i)->Info;
+			const ScannerInfo * jInfo = &(_scanners.begin() + j)->Info;
 			if (_scannerRssis(i, j) == 0) {
-				return &(_scanners.begin() + j)->Info;
+				ESP_LOGI(TAG, "%s should advertise; %s doesn't have measurement",
+				         ToString(jInfo->Bda).c_str(), ToString(iInfo->Bda).c_str());
+				return jInfo;
 			}
 			else if (_scannerRssis(j, i) == 0) {
-				return &(_scanners.begin() + i)->Info;
+				ESP_LOGI(TAG, "%s should advertise; %s doesn't have measurement",
+				         ToString(iInfo->Bda).c_str(), ToString(jInfo->Bda).c_str());
+				return iInfo;
 			}
 		}
 	}
@@ -167,6 +173,9 @@ const Math::Matrix<float> * DeviceMemory::UpdateScannerPositions()
 
 	// Recalculate scanner center
 	_UpdateScannerCenter();
+
+	ESP_LOGI(TAG, "Scanners updated; Center (x,y): %.2f %.2f", _scannerCenter[0],
+	         _scannerCenter[1]);
 
 	return &_scannerPositions;
 }
@@ -374,7 +383,7 @@ void DeviceMemory::_UpdateScanner(ScannerIt sc1, ScannerIt sc2, std::int8_t rssi
 	// Since AnchorDistance3D only uses the upper triangular part of the matrix, we will just leave
 	// it as it is for now - ignore the lower triangular part.
 	_scannerDistances(sIdx1, sIdx2) = PathLoss::LogDistance(rssiVal, envFactor, refPathLoss);
-	ESP_LOGI(TAG, "[%s - %s]: Rssi: %d, Dist: %.2f, RefPathLoss: %d, EnvFactor: %.2f",
+	ESP_LOGI(TAG, "%s found %s: Rssi: %d, Dist: %.2f, RefPathLoss: %d, EnvFactor: %.2f",
 	         ToString(_scanners[sIdx1].Info.Bda.Addr).c_str(),
 	         ToString(_scanners[sIdx2].Info.Bda.Addr).c_str(), rssiVal,
 	         _scannerDistances(sIdx1, sIdx2), refPathLoss, envFactor);

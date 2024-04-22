@@ -29,7 +29,7 @@ struct AppConfig
 	struct DeviceMemoryConfig
 	{
 		/// @brief Maximum amount of devices saved in DeviceMemory
-		std::size_t MemorySizeLimit{128};
+		std::size_t MemorySizeLimit{21};
 
 		/// @brief Will merge BLE devices with random BDAs, that use the same advertising data,
 		/// into one device with new BDA. At that point, it's assumed that the device changed its
@@ -39,6 +39,9 @@ struct AppConfig
 
 		/// @brief Maximum interval in milliseconds, after which a device is removed if not updated
 		std::size_t StaleLimit{30'000};
+
+		/// @brief Minimum measured RSSI to save a device.
+		std::int8_t MinRssi{-95};
 	} DeviceMemoryCfg;
 };
 }  // namespace Scanner

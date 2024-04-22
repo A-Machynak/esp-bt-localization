@@ -8,6 +8,8 @@
     #include "master/master.h"
 
     Master::AppConfig cfg {
+        .GattReadInterval = CONFIG_MASTER_GATT_READ_INTERVAL,
+        .DelayBetweenGattReads = CONFIG_MASTER_DELAY_BETWEEN_GATT_READS,
     #if defined(CONFIG_WIFI_AS_AP)
         .WifiCfg = Master::WifiConfig {
             .Mode = Master::WifiOpMode::AP,
@@ -40,7 +42,16 @@
         .ScanModePeriodClassic = CONFIG_SCANNER_SCAN_BOTH_PERIOD_CLASSIC,
         .ScanModePeriodBle = CONFIG_SCANNER_SCAN_BOTH_PERIOD_BLE,
     #endif
-        .DeviceMemoryCfg = {}
+        .DeviceMemoryCfg = {
+            .MemorySizeLimit = CONFIG_SCANNER_DEVICE_COUNT_LIMIT,
+            #if defined(CONFIG_SCANNER_ENABLE_ASSOCIATION)
+            .EnableAssociation = true,
+            #else
+            .EnableAssociation = false,
+            #endif
+            .StaleLimit = CONFIG_SCANNER_STALE_LIMIT,
+            .MinRssi = CONFIG_SCANNER_MIN_RSSI
+        }
     };
 
     static Scanner::App app(cfg);
@@ -51,7 +62,7 @@
     Tag::AppConfig cfg {
         .AdvIntMin = CONFIG_TAG_MINIMUM_ADVERTISING_INTERVAL,
         .AdvIntMax = CONFIG_TAG_MAXIMUM_ADVERTISING_INTERVAL,
-        #if defined(TAG_ADVERTISING_CHANNEL_ALL)
+        #if defined(CONFIG_TAG_ADVERTISING_CHANNEL_ALL)
         .AdvertiseOnAllChannels = true,
         .ChannelToAdvertiseOn = {},
         #else

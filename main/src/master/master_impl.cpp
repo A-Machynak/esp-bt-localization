@@ -407,8 +407,8 @@ void App::UpdateDeviceDataLoop()
 	// Read "Devices" characteristic in regular intervals, to get updated RSSI values.
 	// Each time all the scanners' values are read, update the new positions.
 
-	constexpr TickType_t Delay = pdMS_TO_TICKS(5'500);
-	constexpr TickType_t DelayBetweenReads = pdMS_TO_TICKS(500);
+	const TickType_t Delay = pdMS_TO_TICKS(_cfg.GattReadInterval);
+	const TickType_t DelayBetweenReads = pdMS_TO_TICKS(_cfg.DelayBetweenGattReads);
 
 	// Data required to read a characteristic
 	struct ReadCharData

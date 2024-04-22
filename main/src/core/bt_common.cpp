@@ -20,11 +20,11 @@ namespace Bt
 
 void EnableBtController()
 {
-	// Controller
-	// Idle -> Init. -> Enable
-	#ifdef CONFIG_BTDM_CTRL_MODE_BLE_ONLY
-		ESP_ERROR_CHECK(esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT)); // Saves like 50k
-	#endif
+// Controller
+// Idle -> Init. -> Enable
+#ifdef CONFIG_BTDM_CTRL_MODE_BLE_ONLY
+	ESP_ERROR_CHECK(esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT));  // Saves like 50k
+#endif
 
 	if (esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_IDLE) {
 		ESP_LOGI(TAG, "Initializing BT Controller");
@@ -61,7 +61,8 @@ void EnableBluedroid()
 	// Uninit. -> Init. -> Enable
 	if (esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_UNINITIALIZED) {
 		ESP_LOGI(TAG, "Initializing Bluedroid");
-		ESP_ERROR_CHECK(esp_bluedroid_init());
+		esp_bluedroid_config_t cfg = BT_BLUEDROID_INIT_CONFIG_DEFAULT();
+		ESP_ERROR_CHECK(esp_bluedroid_init_with_cfg(&cfg));
 	}
 	if (esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_INITIALIZED) {
 		ESP_LOGI(TAG, "Enabling Bluedroid");
