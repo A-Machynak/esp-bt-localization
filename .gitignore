@@ -11,3 +11,9 @@ web/compressed.h
 web/visualize.min.*
 
 *.excalidraw
+
+main/certificates/*.key
+main/certificates/*.pem
+main/certificates/*.crt
+
+python_server/venv

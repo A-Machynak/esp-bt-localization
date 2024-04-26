@@ -3,8 +3,8 @@
 
 namespace Master
 {
-HttpServer::HttpServer()
-    : _impl(new Impl::HttpServer)
+HttpServer::HttpServer(const WifiConfig & cfg)
+    : _impl(new Impl::HttpServer(cfg))
 {
 }
 
@@ -13,9 +13,9 @@ HttpServer::~HttpServer()
 	delete _impl;
 }
 
-void HttpServer::Init(const WifiConfig & config)
+void HttpServer::Init()
 {
-	_impl->Init(config);
+	_impl->Init();
 }
 
 void HttpServer::SetDevicesGetData(std::span<const char> data)
@@ -26,6 +26,11 @@ void HttpServer::SetDevicesGetData(std::span<const char> data)
 void HttpServer::SetConfigPostListener(std::function<void(std::span<const char>)> fn)
 {
 	_impl->SetConfigPostListener(fn);
+}
+
+void HttpServer::SwitchMode(WifiOpMode mode)
+{
+	_impl->SwitchMode(mode);
 }
 
 }  // namespace Master

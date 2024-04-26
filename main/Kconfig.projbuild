@@ -1,15 +1,15 @@
 
 menu "ESP Localization"
-    choice MASTER_OR_SCANNER
+    choice
         prompt "Select Master, Scanner or Tag"
         default MASTER
 
-    config MASTER
-        bool "Device acts as a Master"
-    config SCANNER
-        bool "Device acts as a Scanner"
-    config TAG
-        bool "Device acts as a Tag"
+        config MASTER
+            bool "Device acts as a Master"
+        config SCANNER
+            bool "Device acts as a Scanner"
+        config TAG
+            bool "Device acts as a Tag"
     endchoice
 
     # TAG
@@ -116,63 +116,187 @@ menu "ESP Localization"
     menu "Master"
         depends on MASTER
 
-        config MASTER_GATT_READ_INTERVAL
-            int "Gatt Read interval [ms]"
-            range 100 60000
-            default 1000
-            help
-                Time to wait in milliseconds before sending GATT Read to each Scanner [ms].
-        config MASTER_DELAY_BETWEEN_GATT_READS
-            int "Gatt Read delay"
-            range 100 5000
-            default 500
-            help
-                Time to wait between each GATT Read [ms]
+        menu "Algorithm"
+            config MASTER_MIN_SCANNERS
+                int "Min scanners"
+                range 2 8
+                default 3
+                help
+                    Minimum amount of Scanners to calculate their relative positions.
+            config MASTER_MAX_SCANNERS
+                int "Max scanners"
+                range 2 8
+                default 8
+                help
+                    Maximum connected scanners (will probably also be limited by GATT).
+            config MASTER_MIN_MEASUREMENTS
+                int "Min measurements"
+                range 1 5
+                default 3
+                help
+                    Minimum Scanner measurements to calculate a position.
+            config MASTER_DEVICE_STORE_TIME
+                int "Device store time [ms]"
+                range 500 600000
+                default 30000
+                help
+                    How long before a device gets removed if it doesn't receive any measurement.
+            config MASTER_DEFAULT_PATH_LOSS
+                int "Path loss [dBm]"
+                range 0 127
+                default 50
+                help
+                    Default reference path loss at 1m used for all the devices.
+            config MASTER_DEFAULT_ENV_FACTOR
+                int "Environment factor [n*10]"
+                range 1 100
+                default 40
+                help
+                    Default environment factor used for all the devices multiplied by 10 (- default is 4.0)
+            config MASTER_NO_POSITION_CALCULATION
+                bool "No position calculation"
+                help
+                    If true, no position calculation/approximation of the devices will be done on the Master device.
+                    Instead, it's expected that the data is pulled from the HTTP API Devices endpoint
+                    and positions calculated somewhere else.
+        endmenu
+
+        menu "GATT"
+            config MASTER_GATT_READ_INTERVAL
+                int "Gatt Read interval [ms]"
+                range 100 60000
+                default 1000
+                help
+                    Time to wait in milliseconds before sending GATT Read to each Scanner [ms].
+            config MASTER_DELAY_BETWEEN_GATT_READS
+                int "Gatt Read delay"
+                range 100 5000
+                default 500
+                help
+                    Time to wait between each GATT Read [ms]
+        endmenu
+
         # WiFi
         menu "WiFi"
-            choice WIFI_AP_OR_STA
-                prompt "AP/STA"
+            choice
+                prompt "Use AP/STA as default"
                 default WIFI_AS_AP
                 help
-                    Create wifi AP or connect to an existing one (STA)
+                    Create WiFi AP or connect to an existing one (STA) - can be changed during runtime.
 
             config WIFI_AS_AP
                 bool "Access Point"
                 help
-                    Create new wifi network
+                    Create new wifi network by default
             config WIFI_AS_STA
                 bool "Station"
                 help
-                    Connect to an existing one
+                    Connect to an existing one by default
             endchoice
 
-            config WIFI_SSID
-                string "WiFi SSID"
-                default "espwifi0"
-                help
-                    SSID (network name)
+            menu "AP configuration"
+                config WIFI_AP_SSID
+                    string "WiFi AP SSID"
+                    default "espwifi0"
+                    help
+                        SSID used for AP mode (network name)
 
-            config WIFI_PASSWORD
-                string "WiFi Password"
-                default "espwifi0"
-                help
-                    WiFi password (WPA2)
+                config WIFI_AP_PASSWORD
+                    string "WiFi Password"
+                    default "espwifi0"
+                    help
+                        WiFi password used for AP mode (WPA2)
 
-            config WIFI_CHANNEL
-                depends on WIFI_AS_AP
-                int "WiFi Channel"
-                range 1 13
-                default 1
-                help
-                    WiFi channel (network channel)
+                config WIFI_AP_CHANNEL
+                    int "WiFi Channel"
+                    range 1 13
+                    default 1
+                    help
+                        WiFi channel (AP mode)
 
-            config WIFI_MAX_CONNECTIONS
-                depends on WIFI_AS_AP
-                int "WiFi Max Connectioons"
-                range 1 32
-                default 3
-                help
-                    Maximum allowed connections
+                config WIFI_AP_MAX_CONNECTIONS
+                    int "WiFi Max Connectioons"
+                    range 1 32
+                    default 3
+                    help
+                        Maximum allowed connections (AP mode)
+            endmenu
+
+            menu "STA configuration"
+                config WIFI_STA_SSID
+                    string "WiFi SSID"
+                    default "espwifi0"
+                    help
+                        SSID - network name (STA mode)
+
+                config WIFI_STA_PASSWORD
+                    string "WiFi Password"
+                    default "espwifi0"
+                    help
+                        WiFi password - WPA2 (STA mode)
+                
+                # https://github.com/espressif/esp-idf/blob/v5.2.1/examples/wifi/wifi_enterprise/main/Kconfig.projbuild
+                config WIFI_USE_WPA2
+                    depends on ESP_WIFI_ENTERPRISE_SUPPORT
+                    bool "Use WPA2"
+                    help
+                        Use WPA2 Enterprise
+
+                config WIFI_VALIDATE_WPA2_SERVER
+                    depends on WIFI_USE_WPA2
+                    bool "Validate server"
+                    help
+                        Validate the server certificate using CA cert.
+
+                choice
+                    depends on WIFI_USE_WPA2
+                    prompt "EAP method"
+                    default WIFI_WPA2_EAP_METHOD_TLS
+                    config WIFI_WPA2_EAP_METHOD_TLS
+                        bool "TLS"
+                    config WIFI_WPA2_EAP_METHOD_PEAP
+                        bool "PEAP"
+                    config WIFI_WPA2_EAP_METHOD_TTLS
+                        bool "TTLS"
+                endchoice
+
+                choice
+                    prompt "Phase2 method for TTLS"
+                    depends on WIFI_WPA2_EAP_METHOD_TTLS
+                    default WIFI_WPA2_EAP_METHOD_TTLS_PHASE2_EAP
+                    config WIFI_WPA2_EAP_METHOD_TTLS_PHASE2_EAP
+                        bool "EAP"
+                    config WIFI_WPA2_EAP_METHOD_TTLS_PHASE2_MSCHAPV2
+                        bool "MSCHAPV2"
+                    config WIFI_WPA2_EAP_METHOD_TTLS_PHASE2_MSCHAP
+                        bool "MSCHAP"
+                    config WIFI_WPA2_EAP_METHOD_TTLS_PHASE2_PAP
+                        bool "PAP"
+                    config WIFI_WPA2_EAP_METHOD_TTLS_PHASE2_CHAP
+                        bool "CHAP"
+                endchoice
+
+                config WIFI_WPA2_EAP_ID
+                    depends on WIFI_USE_WPA2
+                    string "EAP ID"
+                    default "example@espressif.com"
+                    help
+                        Identity in phase 1 of EAP procedure.
+            
+                config WIFI_WPA2_EAP_USERNAME
+                    string "EAP Username"
+                    depends on WIFI_WPA2_EAP_METHOD_PEAP || WIFI_WPA2_EAP_METHOD_TTLS
+                    default "espressif"
+                    help
+                        Username for EAP method.
+            
+                config WIFI_WPA2_EAP_PASSWORD
+                    string "EAP Password"
+                    depends on WIFI_WPA2_EAP_METHOD_PEAP || WIFI_WPA2_EAP_METHOD_TTLS
+                    default "espressif"
+                    help
+                        Password for EAP method.
+            endmenu
         endmenu
     endmenu
 endmenu

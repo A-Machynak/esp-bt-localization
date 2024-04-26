@@ -5,9 +5,7 @@
 #include "core/gatt_common.h"
 #include "core/utility/common.h"
 #include "core/utility/uuid.h"
-#include "master/http/api/post_data.h"
 #include "master/nvs_utils.h"
-#include "master/system_msg.h"
 
 #include <esp_bt.h>
 #include <esp_log.h>
@@ -49,6 +47,8 @@ namespace Master::Impl
 App::App(const AppConfig & cfg)
     : _cfg(cfg)
     , _bleGap(this)
+    , _httpServer(cfg.WifiCfg)
+    , _memory(cfg.DeviceMemoryCfg)
 {
 }
 
@@ -56,7 +56,7 @@ void App::Init()
 {
 	// Reserve enough space, otherwise BTC will run out of it while allocating it himself for
 	// some reason
-	_tmpSerializedData.reserve(Core::DeviceDataView::Size * 128);
+	_tmpSerializedData.reserve(Core::DeviceDataView::Size * DeviceMemory::MaximumDevices);
 	_tmpScanners.reserve(10);
 
 	// Mutex for DeviceMemory
@@ -75,27 +75,29 @@ void App::Init()
 		vTaskStartScheduler();
 	}
 
-	constexpr auto StackSize1 = std::max(static_cast<std::uint32_t>(2 * 16'424),
+	constexpr auto StackSize1 = std::max(static_cast<std::uint32_t>(24'576),
 	                                     static_cast<std::uint32_t>(configMINIMAL_STACK_SIZE));
 	// Task for updating scanners
 	auto ret = xTaskCreate(UpdateScannersTask, "Scanners loop", StackSize1, this, tskIDLE_PRIORITY,
 	                       &_updateScannersTask);
 	assert(ret == pdPASS);
 
-	constexpr auto StackSize2 = std::max(static_cast<std::uint32_t>(2 * 16'424),
+	constexpr auto StackSize2 = std::max(static_cast<std::uint32_t>(24'576),
 	                                     static_cast<std::uint32_t>(configMINIMAL_STACK_SIZE));
 	// Task for reading scanner data
 	ret = xTaskCreate(UpdateDeviceDataTask, "Read loop", StackSize2, this, tskIDLE_PRIORITY,
 	                  &_readDevTask);
 	assert(ret == pdPASS);
 
+	// Init http
+	_httpServer.Init();
+	_httpServer.SetConfigPostListener(
+	    [&](std::span<const char> data) { OnHttpServerUpdate(data); });
+
 	// Scan for scanners
 	_ScanForScanners();
 
-	// Finally, initialize http server
-	_httpServer.Init(_cfg.WifiCfg);
-	_httpServer.SetConfigPostListener(
-	    [&](std::span<const char> data) { OnHttpServerUpdate(data); });
+	heap_caps_print_heap_info(MALLOC_CAP_DEFAULT);
 }
 
 void App::OnHttpServerUpdate(std::span<const char> data)
@@ -109,7 +111,7 @@ void App::OnHttpServerUpdate(std::span<const char> data)
 		std::visit(
 		    // Don't implement auto so we get a compile time error if an implementation is missing
 		    Overload{
-		        [&](const HttpApi::Type::SystemMsg & t) { ProcessSystemMessage(t.Value()); },
+		        [&](const HttpApi::Type::SystemMsg & t) { _ProcessSystemMessage(t.Value()); },
 		        [&](const HttpApi::Type::RefPathLoss & t) {
 			        Nvs::Cache::Instance().SetRefPathLoss(t.Mac(), t.Value());
 		        },
@@ -531,6 +533,38 @@ void App::_ScanForScanners()
 		_bleGap.SetScanParams(&scanParams);
 	}
 	_bleGap.StartScanning();
+}
+
+void App::_ProcessSystemMessage(HttpApi::Type::SystemMsg::Operation op)
+{
+	using Op = HttpApi::Type::SystemMsg::Operation;
+
+	switch (op) {
+	case Op::Restart:
+		ESP_LOGI(TAG, "Reset from HTTP");
+		esp_restart();
+		break;
+	case Op::ResetScanners:
+		ESP_LOGI(TAG, "Scanner Reset from HTTP");
+		if (xSemaphoreTake(_memMutex, portMAX_DELAY)) {
+			_memory.ResetScannerPositions();
+			xSemaphoreGive(_memMutex);
+		}
+		else {
+			ESP_LOGE(TAG, "Failed taking memory mutex");
+		}
+		break;
+	case Op::SwitchToAp:
+		ESP_LOGI(TAG, "Switch to AP from HTTP");
+		_httpServer.SwitchMode(WifiOpMode::AP);
+		break;
+	case Op::SwitchToSta:
+		ESP_LOGI(TAG, "Switch to STA from HTTP");
+		_httpServer.SwitchMode(WifiOpMode::STA);
+		break;
+	default:
+		ESP_LOGW(TAG, "Unknown system message (%d)", int(op));
+	}
 }
 
 }  // namespace Master::Impl

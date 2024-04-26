@@ -7,26 +7,25 @@
 #include <algorithm>
 #include <functional>
 
+#include <esp_eap_client.h>
 #include <esp_event.h>
-#include <esp_netif.h>
-#include <esp_wifi.h>
-
 #include <esp_log.h>
+#include <esp_wifi.h>
 
 namespace
 {
 static const char * TAG = "HttpServer";
 
 /// @brief RAII AP configuration
-static wifi_config_t ApConfig(std::string_view ssid,
-                              std::string_view password,
-                              std::uint8_t channel,
-                              std::uint8_t maxConnections)
+static wifi_config_t ApConfigInit(std::string_view ssid,
+                                  std::string_view password,
+                                  std::uint8_t channel,
+                                  std::uint8_t maxConnections)
 {
 	const std::size_t ssidSize = std::clamp((int)ssid.size(), 0, 31);
 	const std::size_t passSize = std::clamp((int)password.size(), 0, 63);
 
-	wifi_config_t cfg;
+	wifi_config_t cfg{};
 	std::copy_n(ssid.begin(), ssidSize, cfg.ap.ssid);
 	cfg.ap.ssid[ssidSize] = '\0';
 
@@ -37,6 +36,7 @@ static wifi_config_t ApConfig(std::string_view ssid,
 		cfg.ap.authmode = wifi_auth_mode_t::WIFI_AUTH_OPEN;
 	}
 	else {
+		ESP_LOGI(TAG, "Password length >= 8. Setting authentication mode to WPA2_PSK");
 		std::copy_n(password.begin(), passSize, cfg.ap.password);
 		cfg.ap.password[passSize] = '\0';
 
@@ -57,12 +57,12 @@ static wifi_config_t ApConfig(std::string_view ssid,
 }
 
 /// @brief RAII STA configuration
-static wifi_config_t StaConfig(std::string_view ssid, std::string_view password)
+static wifi_config_t StaConfigInit(std::string_view ssid, std::string_view password)
 {
 	const std::size_t ssidSize = std::clamp((int)ssid.size(), 0, 31);
 	const std::size_t passSize = std::clamp((int)password.size(), 0, 63);
 
-	wifi_config_t cfg;
+	wifi_config_t cfg{};
 	std::copy_n(ssid.begin(), ssidSize, cfg.sta.ssid);
 	cfg.sta.ssid[ssidSize] = '\0';
 	std::copy_n(password.begin(), passSize, cfg.sta.password);
@@ -89,17 +89,30 @@ esp_err_t HandlerPassthrough(httpd_req_t * r)
 namespace Master::Impl
 {
 
-HttpServer::HttpServer() {}
+HttpServer::HttpServer(const WifiConfig & cfg)
+    : _cfg(cfg)
+{
+}
 
 HttpServer::~HttpServer()
 {
-	httpd_stop(_handle);
+	if (_handle) {
+		httpd_stop(_handle);
+	}
+	esp_wifi_stop();
+	if (_netIf) {
+		esp_netif_destroy(_netIf);
+	}
 }
 
-void HttpServer::Init(const WifiConfig & config)
+void HttpServer::Init()
 {
-	_mode = config.Mode;
-	_InitWifi(config);
+	ESP_ERROR_CHECK(esp_netif_init());
+	ESP_ERROR_CHECK(esp_event_loop_create_default());
+
+	_InitNetIfWifi();
+	_InitWifi();
+	_InitWifiMode();
 	_InitHttp();
 }
 
@@ -155,11 +168,38 @@ void HttpServer::SetConfigPostListener(std::function<void(std::span<const char>)
 	_postConfigListener = fn;
 }
 
+void HttpServer::SwitchMode(WifiOpMode mode)
+{
+	if (_cfg.Mode != mode) {
+		_cfg.Mode = mode;
+		Restart();
+	}
+	else {
+		ESP_LOGW(TAG, "Already set to %s", (mode == WifiOpMode::AP ? "AP" : "STA"));
+	}
+}
+
+void HttpServer::Restart()
+{
+	ESP_LOGI(TAG, "Stopping httpd");
+	if (_handle) {
+		httpd_stop(_handle);
+	}
+	ESP_LOGI(TAG, "Stopping WiFi");
+	esp_wifi_stop();
+
+	ESP_LOGI(TAG, "Reinitializing...");
+	_InitNetIfWifi();
+	_InitWifi();
+	_InitWifiMode();
+	_InitHttp();
+}
+
 void HttpServer::WifiHandler(esp_event_base_t eventBase, std::int32_t eventId, void * eventData)
 {
 	const wifi_event_t event = static_cast<wifi_event_t>(eventId);
 
-	if (_mode == WifiOpMode::STA) {
+	if (_cfg.Mode == WifiOpMode::STA) {
 		// STA - connect
 		if (eventBase == WIFI_EVENT) {
 			if (eventId == WIFI_EVENT_STA_START) {
@@ -194,40 +234,81 @@ void HttpServer::WifiHandler(esp_event_base_t eventBase, std::int32_t eventId, v
 	}
 }
 
-void HttpServer::_InitWifi(const WifiConfig & config)
+void HttpServer::_InitWifiMode()
 {
-	esp_netif_init();
-	ESP_ERROR_CHECK(esp_event_loop_create_default());
-	if (config.Mode == WifiOpMode::AP) {
-		esp_netif_create_default_wifi_ap();
+	if (_cfg.Mode == WifiOpMode::AP) {
+		ESP_ERROR_CHECK(esp_wifi_set_mode(wifi_mode_t::WIFI_MODE_AP));
+
+		wifi_config_t cfg =
+		    ApConfigInit(_cfg.Ap.Ssid, _cfg.Ap.Password, _cfg.Ap.Channel, _cfg.Ap.MaxConnections);
+		ESP_ERROR_CHECK(esp_wifi_set_config(wifi_interface_t::WIFI_IF_AP, &cfg));
+		ESP_LOGI(TAG, "Configured as AP (ssid \"%s\" pw \"%s\")", cfg.ap.ssid, cfg.ap.password);
 	}
 	else {
-		esp_netif_create_default_wifi_sta();
-	}
+		ESP_ERROR_CHECK(esp_wifi_set_mode(wifi_mode_t::WIFI_MODE_STA));
 
+		wifi_config_t cfg = StaConfigInit(_cfg.Sta.Ssid, _cfg.Sta.Password);
+		ESP_ERROR_CHECK(esp_wifi_set_config(wifi_interface_t::WIFI_IF_STA, &cfg));
+		ESP_LOGI(TAG, "Configured as STA (ssid \"%s\" pw \"%s\")", cfg.sta.ssid, cfg.sta.password);
+	}
+}
+
+void HttpServer::_InitNetIfWifi()
+{
+	if (_netIf != nullptr) {
+		esp_netif_destroy_default_wifi(_netIf);
+	}
+	_netIf = (_cfg.Mode == WifiOpMode::AP) ? esp_netif_create_default_wifi_ap()
+	                                       : esp_netif_create_default_wifi_sta();
+}
+
+void HttpServer::_InitWifi()
+{
 	const wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
 	ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
 	ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
 	                                                    &WifiHandlerPassthrough, this, nullptr));
+	// For STA
+	ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
+	                                                    &WifiHandlerPassthrough, this, nullptr));
+	_InitWifiMode();
 
-	if (config.Mode == WifiOpMode::AP) {
-		ESP_ERROR_CHECK(esp_wifi_set_mode(wifi_mode_t::WIFI_MODE_AP));
+	if (_cfg.Sta.UseWpa2Enterprise) {
+		ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
 
-		wifi_config_t cfg =
-		    ApConfig(config.Ssid, config.Password, config.ApChannel, config.ApMaxConnections);
-		ESP_ERROR_CHECK(esp_wifi_set_config(wifi_interface_t::WIFI_IF_AP, &cfg));
-		ESP_LOGI(TAG, "Configured as AP (ssid \"%s\" pw \"%s\")", cfg.ap.ssid, cfg.ap.password);
-	}
-	else {
-		ESP_ERROR_CHECK(esp_event_handler_instance_register(
-		    IP_EVENT, IP_EVENT_STA_GOT_IP, &WifiHandlerPassthrough, this, nullptr));
+		// I'm glad it's clear that we need an *unsigned* char. In every single f'ing call.
+		ESP_LOGI(TAG, "Set identity: '%s'", (const unsigned char *)_cfg.Sta.EapId.c_str());
+		ESP_ERROR_CHECK(esp_eap_client_set_identity((const unsigned char *)_cfg.Sta.EapId.c_str(),
+		                                            _cfg.Sta.EapId.size()));
 
-		ESP_ERROR_CHECK(esp_wifi_set_mode(wifi_mode_t::WIFI_MODE_STA));
+		if (_cfg.Sta.ValidateWpa2Server) {
+			ESP_ERROR_CHECK(esp_eap_client_set_ca_cert((const unsigned char *)_cfg.Sta.CaPem.data(),
+			                                           _cfg.Sta.CaPem.size()));
+		}
 
-		wifi_config_t cfg = StaConfig(config.Ssid, config.Password);
-		ESP_ERROR_CHECK(esp_wifi_set_config(wifi_interface_t::WIFI_IF_STA, &cfg));
-		ESP_LOGI(TAG, "Configured as STA (ssid \"%s\" pw \"%s\")", cfg.sta.ssid, cfg.sta.password);
+		if (_cfg.Sta.EapMethod_ == EapMethod::Tls) {
+			ESP_ERROR_CHECK(esp_eap_client_set_certificate_and_key(
+			    (const unsigned char *)_cfg.Sta.ClientCrt.data(), _cfg.Sta.ClientCrt.size(),
+			    (const unsigned char *)_cfg.Sta.ClientKey.data(), _cfg.Sta.ClientKey.size(), NULL,
+			    0));
+		}
+		else {  // PEAP/TTLS
+			if (_cfg.Sta.EapUsername.size() > 0) {
+				ESP_LOGI(TAG, "Set username: '%s'", (uint8_t *)_cfg.Sta.EapUsername.c_str());
+				ESP_ERROR_CHECK(esp_eap_client_set_username((uint8_t *)_cfg.Sta.EapUsername.c_str(),
+				                                            _cfg.Sta.EapUsername.size()));
+			}
+			if (_cfg.Sta.EapPassword.size() > 0) {
+				ESP_LOGI(TAG, "Set password: '%s'", (uint8_t *)_cfg.Sta.EapPassword.c_str());
+				ESP_ERROR_CHECK(esp_eap_client_set_password((uint8_t *)_cfg.Sta.EapPassword.c_str(),
+				                                            _cfg.Sta.EapPassword.size()));
+			}
+		}
+		if (_cfg.Sta.EapMethod_ == EapMethod::Ttls) {
+			ESP_ERROR_CHECK(esp_eap_client_set_ttls_phase2_method(_cfg.Sta.Phase2Eap));
+		}
+		ESP_ERROR_CHECK(esp_wifi_sta_enterprise_enable());
 	}
 	ESP_ERROR_CHECK(esp_wifi_start());
 }
@@ -237,6 +318,7 @@ void HttpServer::_InitHttp()
 	httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
 	cfg.lru_purge_enable = true;
 	ESP_ERROR_CHECK(httpd_start(&_handle, &cfg));
+	assert(_handle != nullptr);
 
 	const httpd_uri_t getIndex{
 	    .uri = IndexUri.data(),

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/device_data.h"
 #include "core/utility/mac.h"
 #include "core/wrapper/device.h"
 
@@ -68,24 +69,26 @@ struct MeasurementData
 	TimePoint LastUpdate;    ///< Last measurement update
 };
 
-/// @brief Device info
+/// @brief Device info. Similar to `DeviceData`; but without the RSSI
 struct DeviceInfo
 {
-	Mac Bda;                ///< Bluetooth device address
-	bool IsBle;             ///< Is this device a BLE device?
-	bool IsAddrTypePublic;  ///< Is this device's BDA public?
+	Mac Bda;                               ///< Bluetooth device address
+	std::uint8_t Flags;                    ///< BLE device? Public BDA?
+	std::uint8_t AdvDataSize;              ///< Advertising data size
+	esp_ble_evt_type_t EventType;          ///< Event type
+	std::array<std::uint8_t, 62> AdvData;  ///< Advertising data
+
+	bool IsBle() const { return Flags & 0b1; }
+	bool IsAddrTypePublic() const { return Flags & 0b10; }
 };
 
 /// @brief Collection of measurements for a device from multiple scanners.
 struct DeviceMeasurements
 {
 	/// @brief Constructor
-	/// @param bda Bluetooth device address
+	/// @param data view
 	/// @param firstMeasurement first measurement
-	DeviceMeasurements(const Mac & bda,
-	                   bool isBle,
-	                   bool isPublic,
-	                   const MeasurementData & firstMeasurement);
+	DeviceMeasurements(const Core::DeviceDataView & data, const MeasurementData & firstMeasurement);
 
 	DeviceInfo Info;                    ///< Device info
 	std::vector<MeasurementData> Data;  ///< Measurements from scanners

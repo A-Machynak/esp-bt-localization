@@ -5,6 +5,7 @@
 #include "core/utility/uuid.h"
 #include "core/wrapper/device.h"
 #include "master/device_memory_data.h"
+#include "master/master_cfg.h"
 
 #include "math/matrix.h"
 
@@ -19,28 +20,9 @@ namespace
 /// @brief Dimension count
 constexpr std::size_t Dimensions = 3;
 
-/// @brief Minimum amount of device measurements to try calculating the device position
-constexpr std::size_t MinimumMeasurements = 2;
-
-/// @brief Minimum amount of scanners to calculate their relative positions
-constexpr std::size_t MinimumScanners = 3;
-
-/// @brief How long before a device gets removed if it doens't receive a measurement. [ms]
-constexpr std::int64_t DeviceRemoveTimeMs = 60'000;
-
-/// @brief Hard device limit.
-constexpr std::size_t MaximumDevices = 128;
-
-/// @brief Soft device limit. This much will be preallocated.
-/// Adding more devices might result in reallocation fail and restart.
-constexpr std::size_t MaximumDevicesSoft = MaximumDevices;
-
-/// @brief Hard scanner limit.
-constexpr std::size_t MaximumScanners = 10;
-
-/// @brief Soft scanner limit. This much will be preallocated.
+/// @brief Preallocated scanner size.
 /// Adding more scanners might result in reallocation fail and restart.
-constexpr std::size_t MaximumScannersSoft = 10;
+constexpr std::size_t MaximumScannersPrealloc = 10;
 
 }  // namespace
 
@@ -57,7 +39,8 @@ class DeviceMemory
 {
 public:
 	/// @brief Constructor
-	DeviceMemory();
+	/// @param cfg configuration
+	DeviceMemory(const AppConfig::DeviceMemoryConfig & cfg);
 
 	/// @brief Add new scanner
 	/// @param scanner scanner information
@@ -98,6 +81,9 @@ public:
 	/// @return span; valid until the next call of this method
 	std::span<std::uint8_t> SerializeOutput();
 
+	/// @brief Reset Scanner positions
+	void ResetScannerPositions();
+
 	/// @brief Scanner from connection ID
 	/// @param connId connection ID
 	/// @return scanner or nullptr if not found
@@ -107,7 +93,13 @@ public:
 	/// @return all scanners
 	const std::vector<ScannerDetail> & GetScanners() const;
 
+	/// @brief Hard device limit.
+	static constexpr std::size_t MaximumDevices = 80;
+
 private:
+	/// @brief Configuration
+	AppConfig::DeviceMemoryConfig _cfg;
+
 	/// @brief RSSIs before being converted to distances - NxN symmetric matrix.
 	Math::Matrix<std::int8_t> _scannerRssis;
 	/// @brief Scanner distances - NxN symmetric matrix.
@@ -171,6 +163,9 @@ private:
 
 	/// @brief Update center of the scanners.
 	void _UpdateScannerCenter();
+
+	void _SerializeWithPositions();
+	void _SerializeRaw();
 };
 
 }  // namespace Master

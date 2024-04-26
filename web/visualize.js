@@ -44,12 +44,13 @@ function Init() {
 	});
 	document.getElementById("set-bda-name").addEventListener("click", function() {
 		SetLocalBdaName(document.getElementById("bda").value, document.getElementById("bda-name").value);
-		//var bda = CheckAndConvertBda();
-		//if (bda) { ConfigSetBdaName(bda, document.getElementById("bda-name").value); }
+		//var bda = CheckAndConvertBda(); if (bda) { ConfigSetBdaName(bda, document.getElementById("bda-name").value); }
 	});
-	document.getElementById("sys-msg-restart").addEventListener("click", function() {
-		ConfigSendSystemMsg(0);
-	});
+	document.getElementById("sys-msg-restart").addEventListener("click", () => ConfigSendSystemMsg(0));
+	document.getElementById("sys-msg-reset-scanners").addEventListener("click", () => ConfigSendSystemMsg(1));
+	document.getElementById("sys-msg-switch-ap").addEventListener("click", () => ConfigSendSystemMsg(2));
+	document.getElementById("sys-msg-switch-sta").addEventListener("click", () => ConfigSendSystemMsg(3));
+
 	document.getElementById("set-path-limit").addEventListener("click", function() {
 		ChangePathLimit(parseInt(document.getElementById("set-path-limit-value").value));
 	});
@@ -79,13 +80,13 @@ function CheckAndConvertBda() {
 }
 
 function ConfigSendSystemMsg(value) {
-	if (value != 0) {
-		alert("System message can only be of type 0");
+	if (value < 0 || value > 3) {
+		alert("System message out of range <0,3>");
 		return;
 	}
 	const buf = new Uint8Array(2);
 	buf[0] = 0;      // type
-	buf[1] = 0;      // sys msg type
+	buf[1] = value;  // sys msg type
 	PostConfig(buf);
 }
 

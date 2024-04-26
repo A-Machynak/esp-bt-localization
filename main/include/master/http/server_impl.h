@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <esp_http_server.h>
+#include <esp_netif.h>
 
 #include "master/http/server_cfg.h"
 
@@ -34,12 +35,11 @@ class HttpServer final
 {
 public:
 	/// @brief Constructor, initialize with Init (in case of static initialization)
-	HttpServer();
+	HttpServer(const WifiConfig & cfg);
 	~HttpServer();
 
-	/// @brief Initialize with configuration
-	/// @param config config
-	void Init(const WifiConfig & config);
+	/// @brief Initialize
+	void Init();
 
 	/// @brief URI handlers callbacks. Not meant to be called directly.
 	/// @param r request
@@ -64,21 +64,32 @@ public:
 	/// @param fn function
 	void SetConfigPostListener(std::function<void(std::span<const char>)> fn);
 
+	/// @brief Switch to another WiFi mode.
+	/// @param mode Wifi mode
+	void SwitchMode(WifiOpMode mode);
+
+	/// @brief Restart server
+	void Restart();
+
 private:
+	/// Configuration
+	WifiConfig _cfg;
 	/// HTTPd server handle
 	httpd_handle_t _handle{nullptr};
-	/// Operation mode
-	WifiOpMode _mode;
 	/// Data for API endpoint
 	std::vector<char> _rawData;
 	/// Function called for API endpoint POST request
 	std::function<void(std::span<const char>)> _postConfigListener;
 
+	/// Network interface
+	esp_netif_t * _netIf{nullptr};
+
 	/// @brief Initializers
 	/// @{
-	void _InitWifi(const WifiConfig & config);
+	void _InitNetIfWifi();
+	void _InitWifi();
+	void _InitWifiMode();
 	void _InitHttp();
-	void _InitWifiCommon();
 	/// @}
 };
 

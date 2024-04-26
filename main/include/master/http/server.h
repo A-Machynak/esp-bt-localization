@@ -18,12 +18,11 @@ class HttpServer
 {
 public:
 	/// @brief Constructor, has to be initialized with Init (in case of static initialization)
-	HttpServer();
+	HttpServer(const WifiConfig & cfg);
 	~HttpServer();
 
 	/// @brief Initialize with configuration
-	/// @param config config
-	void Init(const WifiConfig & config);
+	void Init();
 
 	/// @brief Set the data returned from DevicesUri endpoint (GET)
 	/// @param data raw data
@@ -32,6 +31,10 @@ public:
 	/// @brief Listener for ConfigUri POST request
 	/// @param fn function
 	void SetConfigPostListener(std::function<void(std::span<const char>)> fn);
+
+	/// @brief Switch to another WiFi mode.
+	/// @param mode WiFi mode
+	void SwitchMode(WifiOpMode mode);
 
 private:
 	Impl::HttpServer * _impl;

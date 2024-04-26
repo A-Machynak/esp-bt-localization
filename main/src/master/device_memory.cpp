@@ -20,17 +20,18 @@ static const char * TAG = "DevMem";
 namespace Master
 {
 
-DeviceMemory::DeviceMemory()
+DeviceMemory::DeviceMemory(const AppConfig::DeviceMemoryConfig & cfg)
+    : _cfg(cfg)
 {
-	_serializedData.reserve(MaximumDevicesSoft * DeviceOut::Size);
-	_scannerRssis.Reserve(MaximumScannersSoft * MaximumScannersSoft);
-	_scannerDistances.Reserve(MaximumScannersSoft * MaximumScannersSoft);
-	_scannerPositions.Reserve(MaximumScannersSoft * Dimensions);
+	_serializedData.reserve(MaximumDevices * DeviceOut::Size);
+	_scannerRssis.Reserve(_cfg.MaxScanners * _cfg.MaxScanners);
+	_scannerDistances.Reserve(_cfg.MaxScanners * _cfg.MaxScanners);
+	_scannerPositions.Reserve(_cfg.MaxScanners * Dimensions);
 }
 
 void DeviceMemory::AddScanner(const ScannerInfo & scanner)
 {
-	if (_scanners.size() >= MaximumScanners) {
+	if (_scanners.size() >= _cfg.MaxScanners) {
 		ESP_LOGW(TAG, "Reached connected scanner limit. Ignoring new scanner.");
 		return;
 	}
@@ -136,7 +137,11 @@ bool DeviceMemory::IsConnectedScanner(const Bt::Device & dev) const
 
 const Math::Matrix<float> * DeviceMemory::UpdateScannerPositions()
 {
-	if (_scannerDistances.Rows() < MinimumScanners) {
+	if (_cfg.NoPositionCalculation) {
+		return nullptr;
+	}
+
+	if (_scannerDistances.Rows() < _cfg.MinScanners) {
 		_scannerPositionsSet = false;
 		return nullptr;
 	}
@@ -184,6 +189,10 @@ const std::vector<DeviceMeasurements> & DeviceMemory::UpdateDevicePositions()
 {
 	_RemoveStaleDevices();
 
+	if (_cfg.NoPositionCalculation) {
+		return _devices;
+	}
+
 	if (!_scannerPositionsSet) {
 		if (!UpdateScannerPositions()) {  // Maybe user didn't update it?
 			return _devices;              // - Nope, can't calculate
@@ -196,15 +205,15 @@ const std::vector<DeviceMeasurements> & DeviceMemory::UpdateDevicePositions()
 
 	for (std::size_t i = 0; i < _devices.size(); i++) {
 		DeviceMeasurements & meas = _devices.at(i);
-		if (meas.Data.size() < MinimumMeasurements) {
+		if (meas.Data.size() < _cfg.MinMeasurements) {
 			continue;
 		}
 
 		// Save distances
 		for (auto & m : meas.Data) {
 			auto v = Nvs::Cache::Instance().GetValues(meas.Info.Bda.Addr);
-			const auto refPathLoss = v.RefPathLoss.value_or(PathLoss::DefaultRefPathLoss);
-			const auto envFactor = v.EnvFactor.value_or(PathLoss::DefaultEnvFactor);
+			const auto refPathLoss = v.RefPathLoss.value_or(_cfg.DefaultPathLoss);
+			const auto envFactor = v.EnvFactor.value_or(_cfg.DefaultEnvFactor);
 
 			tmpDist.at(m.ScannerIdx) = PathLoss::LogDistance(m.Rssi, envFactor, refPathLoss);
 		}
@@ -222,8 +231,19 @@ const std::vector<DeviceMeasurements> & DeviceMemory::UpdateDevicePositions()
 
 std::span<std::uint8_t> DeviceMemory::SerializeOutput()
 {
+	if (_cfg.NoPositionCalculation) {
+		_SerializeRaw();
+	}
+	else {
+		_SerializeWithPositions();
+	}
+	return _serializedData;
+}
+
+void DeviceMemory::_SerializeWithPositions()
+{
 	if (_scannerPositions.Rows() != _scanners.size()) {
-		return {};  // Probably didn't update yet.
+		return;  // Probably didn't update yet.
 	}
 
 	// Count how many devices have valid positions
@@ -263,14 +283,76 @@ std::span<std::uint8_t> DeviceMemory::SerializeOutput()
 		const std::span<const std::uint8_t, 6> bda(dev.Info.Bda.Addr);
 		const std::span<const float, 3> pos(dev.Position);
 
-		DeviceOut::Serialize(out, bda, pos, dev.Data.size(), false, dev.Info.IsBle,
-		                     dev.Info.IsAddrTypePublic);
+		DeviceOut::Serialize(out, bda, pos, dev.Data.size(), false, dev.Info.IsBle(),
+		                     dev.Info.IsAddrTypePublic());
 
 		offset += DeviceOut::Size;
 	}
 	ESP_LOGI(TAG, "Serialized %d scanners, %d devices", _scanners.size(), devicesSerialized);
+}
 
-	return _serializedData;
+void DeviceMemory::_SerializeRaw()
+{
+	// 1B scanner count (N), 1B Device Count
+	//             6B    1*N    = (6 + N)
+	// [Scanner] { MAC, RSSI[N] }
+	const std::size_t singleScannerSize = 6 + _scanners.size();
+	const std::size_t scannerSize = singleScannerSize * _scanners.size();
+
+	//             6B    1*N      1B      1B          1B        62B = (71 + N)
+	// [Device ] { MAC, RSSI[N], Flags, AdvDataLen, EventT, AdvData }
+	const std::size_t singleDeviceSize = 71 + _scanners.size();
+	const std::size_t devicesSize = singleDeviceSize * _devices.size();
+
+	_serializedData.resize(scannerSize + devicesSize);
+
+	std::size_t offset = 0;
+	// Scanners
+	for (std::size_t i = 0; i < _scanners.size(); i++) {
+		std::copy(_scanners[i].Info.Bda.Addr.begin(), _scanners[i].Info.Bda.Addr.end(),
+		          _serializedData.data() + offset);
+		for (std::size_t j = 0; j < _scanners.size(); j++) {
+			_serializedData.at(offset + 6 + j) = _scannerRssis(i, j);
+		}
+		offset += singleScannerSize;
+	}
+
+	std::vector<std::int8_t> tmpRssiData;
+	tmpRssiData.resize(_scanners.size());
+	// Devices
+	for (std::size_t i = 0; i < _devices.size(); i++) {
+		const auto & dev = _devices.at(i);
+		// BDA
+		std::copy(dev.Info.Bda.Addr.begin(), dev.Info.Bda.Addr.end(),
+		          _serializedData.data() + offset);
+		offset += 6;
+
+		// RSSI
+		for (std::size_t j = 0; j < dev.Data.size(); j++) {
+			const auto & dat = dev.Data.at(j);
+			_serializedData[offset + dat.ScannerIdx] = dat.Rssi;
+		}
+		offset += _scanners.size();
+
+		// Flags
+		_serializedData[offset++] = dev.Info.Flags;        // Flags
+		_serializedData[offset++] = dev.Info.AdvDataSize;  // AdvDataLen
+		_serializedData[offset++] = dev.Info.EventType;    // EventT
+
+		// AdvData
+		std::copy(dev.Info.AdvData.begin(), dev.Info.AdvData.end(),
+		          _serializedData.begin() + offset);
+		offset += dev.Info.AdvData.size();
+	}
+}
+
+void DeviceMemory::ResetScannerPositions()
+{
+	_scannerRssis.Fill(0);
+	_scannerDistances.Fill(0);
+	_scannerPositions.Fill(0.0);
+	_scannerPositionsSet = false;
+	_devices.clear();
 }
 
 const ScannerDetail * DeviceMemory::GetScanner(std::uint16_t connId) const
@@ -332,8 +414,7 @@ void DeviceMemory::_UpdateDistance(ScannerIt sIt, const Core::DeviceDataView::Ar
 		else {
 			// Not a device nor a scanner -> new device
 			const std::size_t idx = std::distance(_scanners.begin(), sIt);
-			_devices.emplace_back(bda, view.IsBle(), view.IsAddrTypePublic(),
-			                      MeasurementData{idx, view.Rssi()});
+			_AddDevice(DeviceMeasurements(view, MeasurementData{idx, view.Rssi()}));
 		}
 	}
 }
@@ -374,8 +455,8 @@ void DeviceMemory::_UpdateScanner(ScannerIt sc1, ScannerIt sc2, std::int8_t rssi
 	}
 
 	const auto & v = Nvs::Cache::Instance().GetValues(_scanners[sIdx1].Info.Bda.Addr);
-	const std::int8_t refPathLoss = v.RefPathLoss.value_or(PathLoss::DefaultRefPathLoss);
-	const float envFactor = v.EnvFactor.value_or(PathLoss::DefaultEnvFactor);
+	const std::int8_t refPathLoss = v.RefPathLoss.value_or(_cfg.DefaultPathLoss);
+	const float envFactor = v.EnvFactor.value_or(_cfg.DefaultEnvFactor);
 	const std::int8_t rssiVal = _scannerRssis(sIdx1, sIdx2);
 
 	_scannerDistances(sIdx1, sIdx2) = PathLoss::LogDistance(rssiVal, envFactor, refPathLoss);
@@ -430,7 +511,7 @@ void DeviceMemory::_RemoveStaleDevices()
 	const TimePoint now = Clock::now();  // just calculate it once
 
 	std::erase_if(_devices, [&](const DeviceMeasurements & dev) {
-		return (DeltaMs(dev.LastUpdate, now) > DeviceRemoveTimeMs);
+		return (DeltaMs(dev.LastUpdate, now) > _cfg.DeviceStoreTime);
 	});
 }
 

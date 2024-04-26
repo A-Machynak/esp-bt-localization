@@ -7,7 +7,7 @@ namespace PathLoss
 /// @brief Default parameters
 /// @{
 constexpr float DefaultEnvFactor = 4.0;
-constexpr std::int8_t DefaultRefPathLoss = 50;
+constexpr std::int8_t DefaultRefPathLoss = 45;
 /// @}
 
 /// @brief Log-distance path loss model.

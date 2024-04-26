@@ -151,10 +151,27 @@ POST requests expect raw bytes in the format `[Type0][Data0][Type1][Data1]...`, 
 | 3    | Map MAC to a name (Unused) | 6B (MAC) + up to 16B (name, `string`) |
 
 `System message types`
-| Type | Name            | Description      |
-| ---- | --------------- | ---------------- |
-| 0    | Restart         | Restarts the ESP |
+| Type | Name            | Data | Description                                                    |
+| ---- | --------------- | ---- | -------------------------------------------------------------- |
+| 0    | Restart         | None | Restarts the ESP                                               |
+| 1    | Reset Scanners  | None | Resets scanner positions                                       |
+| 2    | Switch to AP    | None | Switches WiFi to AP mode (with SSID/password from menuconfig)  |
+| 3    | Switch to STA   | None | Switches WiFi to STA mode (with SSID/password from menuconfig) |
 
+### Custom processing and visualization
+
+Instead of calculating the positions on the device, you can use your own application to process and visualize the data.
+To do that, set the `menuconfig` field `Master -> Algorithm -> No position calculation` to `On`.
+At that point, the `GET /api/devices` endpoint sends data in the following format:
+
+| Bytes           | Name              | Description                        |
+| --------------- | ----------------- | ---------------------------------- |
+| 1               | Scanner count (N) | How many scanners are sent         |
+| 1               | Device count (M)  | How many devices are sent          |
+| N*size(Scanner) | Array of scanners | Array with `Scanner` types (below) |
+| M*size(Device)  | Array of devices  | Array with `Device` types (below)  |
+
+TODO (Device/Scanner format)
 
 ### Structure
 - `core/` - wrappers over Bluetooth/WiFi API and data common for both Master and Scanner

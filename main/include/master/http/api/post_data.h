@@ -31,7 +31,10 @@ struct SystemMsg
 
 	enum class Operation
 	{
-		Restart = 0
+		Restart = 0,
+		ResetScanners = 1,
+		SwitchToAp = 2,
+		SwitchToSta = 3
 	};
 
 	/// @brief Data getters
@@ -40,7 +43,7 @@ struct SystemMsg
 	Operation Value() const;
 	/// @}
 
-	/// @brief Validity check; expects data without first type byte
+	/// @brief Validity check; expects data without first (type) byte
 	/// @param data data
 	/// @return is valid
 	static bool IsValid(std::span<const std::uint8_t> data);

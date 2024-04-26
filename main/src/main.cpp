@@ -4,76 +4,22 @@
 
 // clang-format off
 #if defined(CONFIG_MASTER)
-    #define MAIN_TAG "Master"
-    #include "master/master.h"
-
-    Master::AppConfig cfg {
-        .GattReadInterval = CONFIG_MASTER_GATT_READ_INTERVAL,
-        .DelayBetweenGattReads = CONFIG_MASTER_DELAY_BETWEEN_GATT_READS,
-    #if defined(CONFIG_WIFI_AS_AP)
-        .WifiCfg = Master::WifiConfig {
-            .Mode = Master::WifiOpMode::AP,
-            .Ssid = CONFIG_WIFI_SSID,
-            .Password = CONFIG_WIFI_PASSWORD,
-            .ApChannel = CONFIG_WIFI_CHANNEL,
-            .ApMaxConnections = CONFIG_WIFI_MAX_CONNECTIONS,
-        },
-    #elif defined(CONFIG_WIFI_AS_STA)
-        .WifiCfg = Master::WifiConfig {
-            .Mode = Master::WifiOpMode::STA,
-            .Ssid = CONFIG_WIFI_SSID,
-            .Password = CONFIG_WIFI_PASSWORD,
-        },
-    #endif
-    };
-
-    static Master::App app(cfg);
+	#define MAIN_TAG "Master"
+	#include "master/master.h"
+	#include "cfg_master.h"
+	static Master::App app(Cfg);
 #elif defined(CONFIG_SCANNER)
-    #define MAIN_TAG "Scanner"
-    #include "scanner/scanner.h"
-
-    Scanner::AppConfig cfg {
-    #if defined(CONFIG_SCANNER_SCAN_CLASSIC_ONLY)
-        .Mode = Scanner::ScanMode::ClassicOnly,
-    #elif defined(CONFIG_SCANNER_SCAN_BLE_ONLY)
-        .Mode = Scanner::ScanMode::BleOnly,
-    #else
-        .Mode = Scanner::ScanMode::Both,
-        .ScanModePeriodClassic = CONFIG_SCANNER_SCAN_BOTH_PERIOD_CLASSIC,
-        .ScanModePeriodBle = CONFIG_SCANNER_SCAN_BOTH_PERIOD_BLE,
-    #endif
-        .DeviceMemoryCfg = {
-            .MemorySizeLimit = CONFIG_SCANNER_DEVICE_COUNT_LIMIT,
-            #if defined(CONFIG_SCANNER_ENABLE_ASSOCIATION)
-            .EnableAssociation = true,
-            #else
-            .EnableAssociation = false,
-            #endif
-            .StaleLimit = CONFIG_SCANNER_STALE_LIMIT,
-            .MinRssi = CONFIG_SCANNER_MIN_RSSI
-        }
-    };
-
-    static Scanner::App app(cfg);
+	#define MAIN_TAG "Scanner"
+	#include "scanner/scanner.h"
+	#include "cfg_scanner.h"
+	static Scanner::App app(Cfg);
 #elif defined(CONFIG_TAG)
-    #define MAIN_TAG "Tag"
-    #include "tag/tag.h"
-
-    Tag::AppConfig cfg {
-        .AdvIntMin = CONFIG_TAG_MINIMUM_ADVERTISING_INTERVAL,
-        .AdvIntMax = CONFIG_TAG_MAXIMUM_ADVERTISING_INTERVAL,
-        #if defined(CONFIG_TAG_ADVERTISING_CHANNEL_ALL)
-        .AdvertiseOnAllChannels = true,
-        .ChannelToAdvertiseOn = {},
-        #else
-        .AdvertiseOnAllChannels = false,
-        .ChannelToAdvertiseOn = CONFIG_TAG_ADVERTISING_CHANNEL,
-        #endif
-    };
-
-    static Tag::App app(cfg);
+	#define MAIN_TAG "Tag"
+	#include "tag/tag.h"
+	#include "cfg_tag.h"
+	static Tag::App app(Cfg);
 #else
-    #error "'MASTER', 'SCANNER' or 'TAG' isn't defined"
+	#error "'MASTER', 'SCANNER' or 'TAG' isn't defined"
 #endif
 
 extern "C" void app_main(void)

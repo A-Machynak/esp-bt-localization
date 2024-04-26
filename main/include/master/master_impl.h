@@ -7,6 +7,7 @@
 #include "core/wrapper/interface/gap_ble_if.h"
 #include "core/wrapper/interface/gattc_if.h"
 #include "master/device_memory.h"
+#include "master/http/api/post_data.h"
 #include "master/http/server.h"
 #include "master/master_cfg.h"
 
@@ -96,6 +97,10 @@ private:
 
 	bool _IsScanner(const Bt::Device & p);
 	void _ScanForScanners();
+
+	/// @brief Process system message
+	/// @param op operation
+	void _ProcessSystemMessage(HttpApi::Type::SystemMsg::Operation op);
 };
 
 }  // namespace Master::Impl
