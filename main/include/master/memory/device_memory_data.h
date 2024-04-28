@@ -9,8 +9,6 @@
 #include <array>
 #include <chrono>
 #include <cstdint>
-#include <map>
-#include <set>
 #include <span>
 
 namespace Master
@@ -23,6 +21,11 @@ using TimePoint = std::chrono::time_point<Clock>;
 /// @param after second time point (ex. now)
 /// @return difference in milliseconds
 std::int64_t DeltaMs(const TimePoint & before, const TimePoint & after = Clock::now());
+
+/// @brief Cast timepoint to unix timestamp (seconds)
+/// @param timepoint timepoint
+/// @return unix timestamp
+std::uint32_t ToUnix(const TimePoint & timepoint);
 
 /// @brief Single scanner
 struct ScannerInfo

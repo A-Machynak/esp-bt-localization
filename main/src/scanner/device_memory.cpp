@@ -96,7 +96,7 @@ void DeviceMemory::AddDevice(const Bt::Device & device)
 		}
 	}
 
-	const std::span<const std::uint8_t, 6> mac{device.Bda.Addr.data(), 6};
+	const std::span<const std::uint8_t, 6> mac(device.Bda.Addr);
 	if (device.IsBle()) {
 		// New BLE device
 		const auto & ble = device.GetBle();
@@ -119,15 +119,25 @@ void DeviceMemory::SerializeData(std::vector<std::uint8_t> & out)
 {
 	RemoveStaleDevices();
 
+	// Read only up to 512B
+	constexpr std::size_t MaxSize = 512;
+	constexpr std::size_t MaxDevices = MaxSize / Core::DeviceDataView::Size;
+
+	const std::size_t count = std::min(_devData.size(), MaxDevices);
+
 	out.clear();
-	out.resize(_devData.size() * Core::DeviceDataView::Size);
+	out.resize(count * Core::DeviceDataView::Size);
+
 	for (std::size_t i = 0; i < _devData.size(); i++) {
 		const std::size_t offset = i * Core::DeviceDataView::Size;
-		std::span<std::uint8_t, Core::DeviceDataView::Size> span(out.data() + offset,
+		std::span<std::uint8_t, Core::DeviceDataView::Size> span(out.begin() + offset,
 		                                                         Core::DeviceDataView::Size);
 		_devData.at(i).Serialize(span);
 	}
-	ESP_LOGI(TAG, "Serialized %d devices", _devData.size());
+	// Destructive read
+	_devData.erase(_devData.begin(), _devData.begin() + count);
+
+	ESP_LOGI(TAG, "Serialized %d devices; %d left to read", count, _devData.size());
 }
 
 void DeviceMemory::RemoveStaleDevices()

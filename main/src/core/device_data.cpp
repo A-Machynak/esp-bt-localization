@@ -10,7 +10,8 @@ DeviceData::DeviceData(std::span<const std::uint8_t> data)
 	std::copy_n(data.begin(), std::min(DeviceDataView::Size, data.size()), Data.data());
 }
 
-DeviceData::DeviceData(std::span<const std::uint8_t, 6> mac,
+DeviceData::DeviceData(std::uint32_t timestamp,
+                       std::span<const std::uint8_t, 6> mac,
                        std::int8_t rssi,
                        FlagMask flags,
                        esp_ble_evt_type_t eventType,
@@ -18,7 +19,9 @@ DeviceData::DeviceData(std::span<const std::uint8_t, 6> mac,
     : Data({})
     , View(Data)
 {
-	std::copy_n(mac.data(), mac.size(), Data.data());
+	std::copy_n(reinterpret_cast<std::uint8_t *>(&timestamp), sizeof(std::uint32_t),
+	            Data.data() + DeviceDataView::TimepointIdx);
+	std::copy_n(mac.data(), mac.size(), Data.data() + DeviceDataView::MacStartIdx);
 	Data[DeviceDataView::RssiIdx] = rssi;
 	Data[DeviceDataView::FlagsIdx] = flags;
 	Data[DeviceDataView::AdvDataSizeIdx] = std::clamp((int)advData.size(), 0, 62);
@@ -32,13 +35,22 @@ DeviceDataView::DeviceDataView(std::span<std::uint8_t, DeviceDataView::Size> dat
 {
 }
 
+std::uint32_t & DeviceDataView::Timestamp()
+{
+	return reinterpret_cast<std::uint32_t &>(Span[0]);
+}
+std::uint32_t DeviceDataView::Timestamp() const
+{
+	return reinterpret_cast<std::uint32_t &>(Span[0]);
+}
+
 std::span<std::uint8_t, 6> DeviceDataView::Mac()
 {
-	return std::span<std::uint8_t, 6>(Span.data() + MacStartIdx, 6);
+	return std::span<std::uint8_t, 6>(Span.begin() + MacStartIdx, Span.begin() + MacEndIdx);
 }
 std::span<const std::uint8_t, 6> DeviceDataView::Mac() const
 {
-	return std::span<const std::uint8_t, 6>(Span.data() + MacStartIdx, 6);
+	return std::span<const std::uint8_t, 6>(Span.begin() + MacStartIdx, Span.begin() + MacEndIdx);
 }
 
 std::int8_t & DeviceDataView::Rssi()
@@ -79,11 +91,13 @@ esp_ble_evt_type_t DeviceDataView::EventType() const
 
 std::span<std::uint8_t, 62> DeviceDataView::AdvData()
 {
-	return std::span<std::uint8_t, 62>(Span.data() + AdvDataStartIdx, 62);
+	return std::span<std::uint8_t, 62>(Span.begin() + AdvDataStartIdx,
+	                                   Span.begin() + AdvDataEndIdx);
 }
 std::span<const std::uint8_t, 62> DeviceDataView::AdvData() const
 {
-	return std::span<const std::uint8_t, 62>(Span.data() + AdvDataStartIdx, 62);
+	return std::span<const std::uint8_t, 62>(Span.begin() + AdvDataStartIdx,
+	                                         Span.begin() + AdvDataEndIdx);
 }
 
 bool DeviceDataView::IsAddrTypePublic() const

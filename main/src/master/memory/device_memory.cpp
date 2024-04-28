@@ -1,4 +1,4 @@
-#include "master/device_memory.h"
+#include "master/memory/device_memory.h"
 
 #include "core/device_data.h"
 #include "master/nvs_utils.h"
@@ -21,12 +21,12 @@ namespace Master
 {
 
 DeviceMemory::DeviceMemory(const AppConfig::DeviceMemoryConfig & cfg)
-    : _cfg(cfg)
+    : IDeviceMemory(cfg)
 {
 	_serializedData.reserve(MaximumDevices * DeviceOut::Size);
 	_scannerRssis.Reserve(_cfg.MaxScanners * _cfg.MaxScanners);
 	_scannerDistances.Reserve(_cfg.MaxScanners * _cfg.MaxScanners);
-	_scannerPositions.Reserve(_cfg.MaxScanners * Dimensions);
+	_scannerPositions.Reserve(_cfg.MaxScanners * 3);
 }
 
 void DeviceMemory::AddScanner(const ScannerInfo & scanner)
@@ -38,14 +38,9 @@ void DeviceMemory::AddScanner(const ScannerInfo & scanner)
 
 	// Find if it already exists
 	if (auto sc = _FindScanner(scanner.Bda); sc != _scanners.end()) {
-		// Already exists
-		ScannerInfo & scInfo = sc->Info;
-		if (scInfo.ConnId == scanner.ConnId) {
-			return;  // Duplicate call?
-		}
-		// Just update
-		scInfo.ConnId = scanner.ConnId;
-		scInfo.Service = scanner.Service;
+		// Already exists; just update
+		sc->Info.ConnId = scanner.ConnId;
+		sc->Info.Service = scanner.Service;
 	}
 	else {
 		// New scanner
@@ -60,7 +55,7 @@ void DeviceMemory::AddScanner(const ScannerInfo & scanner)
 		}
 	}
 	ESP_LOGI(TAG, "%d scanners connected", _scanners.size());
-	UpdateScannerPositions();
+	_UpdateScannerPositions();
 }
 
 void DeviceMemory::UpdateDistance(const std::uint16_t scannerConnId,
@@ -135,20 +130,20 @@ bool DeviceMemory::IsConnectedScanner(const Bt::Device & dev) const
 	       != _scanners.end();
 }
 
-const Math::Matrix<float> * DeviceMemory::UpdateScannerPositions()
+void DeviceMemory::_UpdateScannerPositions()
 {
 	if (_cfg.NoPositionCalculation) {
-		return nullptr;
+		return;
 	}
 
 	if (_scannerDistances.Rows() < _cfg.MinScanners) {
 		_scannerPositionsSet = false;
-		return nullptr;
+		return;
 	}
 
 	// Update size
 	if (_scannerPositions.Rows() != _scanners.size()) {
-		_scannerPositions.Reshape(_scanners.size(), Dimensions);
+		_scannerPositions.Reshape(_scanners.size(), 3);
 
 		for (std::size_t i = 0; i < _scanners.size(); i++) {
 			const auto row = _scannerPositions.Row(i);
@@ -181,21 +176,20 @@ const Math::Matrix<float> * DeviceMemory::UpdateScannerPositions()
 
 	ESP_LOGI(TAG, "Scanners updated; Center (x,y): %.2f %.2f", _scannerCenter[0],
 	         _scannerCenter[1]);
-
-	return &_scannerPositions;
 }
 
-const std::vector<DeviceMeasurements> & DeviceMemory::UpdateDevicePositions()
+void DeviceMemory::_UpdateDevicePositions()
 {
 	_RemoveStaleDevices();
 
 	if (_cfg.NoPositionCalculation) {
-		return _devices;
+		return;
 	}
 
 	if (!_scannerPositionsSet) {
-		if (!UpdateScannerPositions()) {  // Maybe user didn't update it?
-			return _devices;              // - Nope, can't calculate
+		_UpdateScannerPositions();
+		if (!_scannerPositionsSet) {
+			return;  // Can't calculate
 		}
 	}
 
@@ -226,24 +220,14 @@ const std::vector<DeviceMeasurements> & DeviceMemory::UpdateDevicePositions()
 		const Math::PointToAnchors fn(_scannerPositions, tmpDist);
 		Math::Minimize(fn, pos);
 	}
-	return _devices;
 }
 
 std::span<std::uint8_t> DeviceMemory::SerializeOutput()
 {
-	if (_cfg.NoPositionCalculation) {
-		_SerializeRaw();
-	}
-	else {
-		_SerializeWithPositions();
-	}
-	return _serializedData;
-}
+	_UpdateDevicePositions();
 
-void DeviceMemory::_SerializeWithPositions()
-{
 	if (_scannerPositions.Rows() != _scanners.size()) {
-		return;  // Probably didn't update yet.
+		return _serializedData;  // Probably didn't update yet.
 	}
 
 	// Count how many devices have valid positions
@@ -260,10 +244,10 @@ void DeviceMemory::_SerializeWithPositions()
 	for (std::size_t i = 0; i < _scannerPositions.Rows(); i++) {
 		const auto & scan = _scanners.at(i);
 
-		const std::span<std::uint8_t, DeviceOut::Size> out(_serializedData.data() + offset,
+		const std::span<std::uint8_t, DeviceOut::Size> out(_serializedData.begin() + offset,
 		                                                   DeviceOut::Size);
 		const std::span<const std::uint8_t, 6> bda(scan.Info.Bda.Addr);
-		const std::span<const float, Dimensions> pos(_scannerPositions.Row(i));
+		const std::span<const float, 3> pos(_scannerPositions.Row(i));
 		DeviceOut::Serialize(out, bda, pos, scan.UsedMeasurements, true, true, true);
 
 		offset += DeviceOut::Size;
@@ -278,7 +262,7 @@ void DeviceMemory::_SerializeWithPositions()
 		}
 		devicesSerialized++;
 
-		const std::span<std::uint8_t, DeviceOut::Size> out(_serializedData.data() + offset,
+		const std::span<std::uint8_t, DeviceOut::Size> out(_serializedData.begin() + offset,
 		                                                   DeviceOut::Size);
 		const std::span<const std::uint8_t, 6> bda(dev.Info.Bda.Addr);
 		const std::span<const float, 3> pos(dev.Position);
@@ -289,61 +273,7 @@ void DeviceMemory::_SerializeWithPositions()
 		offset += DeviceOut::Size;
 	}
 	ESP_LOGI(TAG, "Serialized %d scanners, %d devices", _scanners.size(), devicesSerialized);
-}
-
-void DeviceMemory::_SerializeRaw()
-{
-	// 1B scanner count (N), 1B Device Count
-	//             6B    1*N    = (6 + N)
-	// [Scanner] { MAC, RSSI[N] }
-	const std::size_t singleScannerSize = 6 + _scanners.size();
-	const std::size_t scannerSize = singleScannerSize * _scanners.size();
-
-	//             6B    1*N      1B      1B          1B        62B = (71 + N)
-	// [Device ] { MAC, RSSI[N], Flags, AdvDataLen, EventT, AdvData }
-	const std::size_t singleDeviceSize = 71 + _scanners.size();
-	const std::size_t devicesSize = singleDeviceSize * _devices.size();
-
-	_serializedData.resize(scannerSize + devicesSize);
-
-	std::size_t offset = 0;
-	// Scanners
-	for (std::size_t i = 0; i < _scanners.size(); i++) {
-		std::copy(_scanners[i].Info.Bda.Addr.begin(), _scanners[i].Info.Bda.Addr.end(),
-		          _serializedData.data() + offset);
-		for (std::size_t j = 0; j < _scanners.size(); j++) {
-			_serializedData.at(offset + 6 + j) = _scannerRssis(i, j);
-		}
-		offset += singleScannerSize;
-	}
-
-	std::vector<std::int8_t> tmpRssiData;
-	tmpRssiData.resize(_scanners.size());
-	// Devices
-	for (std::size_t i = 0; i < _devices.size(); i++) {
-		const auto & dev = _devices.at(i);
-		// BDA
-		std::copy(dev.Info.Bda.Addr.begin(), dev.Info.Bda.Addr.end(),
-		          _serializedData.data() + offset);
-		offset += 6;
-
-		// RSSI
-		for (std::size_t j = 0; j < dev.Data.size(); j++) {
-			const auto & dat = dev.Data.at(j);
-			_serializedData[offset + dat.ScannerIdx] = dat.Rssi;
-		}
-		offset += _scanners.size();
-
-		// Flags
-		_serializedData[offset++] = dev.Info.Flags;        // Flags
-		_serializedData[offset++] = dev.Info.AdvDataSize;  // AdvDataLen
-		_serializedData[offset++] = dev.Info.EventType;    // EventT
-
-		// AdvData
-		std::copy(dev.Info.AdvData.begin(), dev.Info.AdvData.end(),
-		          _serializedData.begin() + offset);
-		offset += dev.Info.AdvData.size();
-	}
+	return _serializedData;
 }
 
 void DeviceMemory::ResetScannerPositions()
@@ -355,16 +285,18 @@ void DeviceMemory::ResetScannerPositions()
 	_devices.clear();
 }
 
-const ScannerDetail * DeviceMemory::GetScanner(std::uint16_t connId) const
+const ScannerInfo * DeviceMemory::GetScanner(std::uint16_t connId) const
 {
 	auto it = std::find_if(_scanners.begin(), _scanners.end(),
 	                       [connId](const ScannerDetail & s) { return s.Info.ConnId == connId; });
-	return (it == _scanners.end()) ? nullptr : &*it;
+	return (it == _scanners.end()) ? nullptr : &it->Info;
 }
 
-const std::vector<ScannerDetail> & DeviceMemory::GetScanners() const
+void DeviceMemory::VisitScanners(const std::function<void(const ScannerInfo &)> & fn)
 {
-	return _scanners;
+	for (const auto & scanner : _scanners) {
+		fn(scanner.Info);
+	}
 }
 
 DeviceMemory::ScannerIt DeviceMemory::_FindScanner(const Mac & mac)
@@ -430,6 +362,9 @@ void DeviceMemory::_UpdateDevice(ScannerIt sIt, DeviceIt devIt, std::int8_t rssi
 	if (meas != devMeas.end()) {
 		// Measurement exists, update
 		meas->Rssi = (meas->Rssi + rssi) / 2;
+
+		const TimePoint now = Clock::now();
+		meas->LastUpdate = now;
 	}
 	else {
 		// First measurement
@@ -458,11 +393,14 @@ void DeviceMemory::_UpdateScanner(ScannerIt sc1, ScannerIt sc2, std::int8_t rssi
 	const std::int8_t refPathLoss = v.RefPathLoss.value_or(_cfg.DefaultPathLoss);
 	const float envFactor = v.EnvFactor.value_or(_cfg.DefaultEnvFactor);
 	const std::int8_t rssiVal = _scannerRssis(sIdx1, sIdx2);
+	const TimePoint now = Clock::now();
 
 	_scannerDistances(sIdx1, sIdx2) = PathLoss::LogDistance(rssiVal, envFactor, refPathLoss);
+	sc1->LastUpdate = now;
 	if (_scannerRssis(sIdx2, sIdx1) == 0) {  // dist(i, j) == dist(j, i)
 		_scannerRssis(sIdx2, sIdx1) = _scannerRssis(sIdx1, sIdx2);
 		_scannerDistances(sIdx2, sIdx1) = _scannerDistances(sIdx1, sIdx2);
+		sc2->LastUpdate = now;
 	}
 	ESP_LOGI(TAG, "%s found %s: Rssi: %d, Dist: %.2f, RefPathLoss: %d, EnvFactor: %.2f",
 	         ToString(_scanners[sIdx1].Info.Bda.Addr).c_str(),
@@ -495,7 +433,7 @@ void DeviceMemory::_RemoveScanner(ScannerIt sIt)
 	_scannerDistances.Reshape(size - 1, size - 1);
 	_scannerRssis.Reshape(size - 1, size - 1);
 
-	UpdateScannerPositions();
+	_UpdateScannerPositions();
 }
 
 void DeviceMemory::_ResetDeviceMeasurements()

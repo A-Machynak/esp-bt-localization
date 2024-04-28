@@ -25,7 +25,8 @@ public:
 	/// @param device device info
 	void AddDevice(const Bt::Device & device);
 
-	/// @brief Serialize data
+	/// @brief Serialize data - only up to 512B. This is destructive - serialized data will be
+	/// removed.
 	/// @param[out] output output destination. Will be cleared and resized
 	void SerializeData(std::vector<std::uint8_t> & out);
 

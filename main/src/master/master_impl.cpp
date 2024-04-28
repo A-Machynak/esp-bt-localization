@@ -5,6 +5,9 @@
 #include "core/gatt_common.h"
 #include "core/utility/common.h"
 #include "core/utility/uuid.h"
+
+#include "master/memory/device_memory.h"
+#include "master/memory/no_processing_memory.h"
 #include "master/nvs_utils.h"
 
 #include <esp_bt.h>
@@ -48,8 +51,15 @@ App::App(const AppConfig & cfg)
     : _cfg(cfg)
     , _bleGap(this)
     , _httpServer(cfg.WifiCfg)
-    , _memory(cfg.DeviceMemoryCfg)
+    , _memory(_cfg.DeviceMemoryCfg.NoPositionCalculation
+                  ? static_cast<IDeviceMemory *>(new NoProcessingMemory(_cfg.DeviceMemoryCfg))
+                  : static_cast<IDeviceMemory *>(new DeviceMemory(_cfg.DeviceMemoryCfg)))
 {
+}
+
+App::~App()
+{
+	delete _memory;
 }
 
 void App::Init()
@@ -132,7 +142,7 @@ void App::GapBleScanResult(const Gap::Ble::Type::ScanResult & p)
 	const Bt::Device device(p);
 
 	if (xSemaphoreTake(_memMutex, BlockTimeInCallback)) {
-		const bool IsConnectedScanner = _memory.IsConnectedScanner(device);  // Read
+		const bool IsConnectedScanner = _memory->IsConnectedScanner(device);  // Read
 		xSemaphoreGive(_memMutex);
 
 		if (!IsConnectedScanner && _IsScanner(device)) {
@@ -219,7 +229,7 @@ void App::GattcDisconnect(const Gattc::Type::Disconnect & p)
 	ESP_LOGI(TAG, "Disconnect (%d)", p.reason);
 
 	if (xSemaphoreTake(_memMutex, portMAX_DELAY)) {  // this HAS to be taken
-		_memory.RemoveScanner(p.conn_id);            // Write
+		_memory->RemoveScanner(p.conn_id);           // Write
 		xSemaphoreGive(_memMutex);
 	}
 	else {
@@ -229,7 +239,7 @@ void App::GattcDisconnect(const Gattc::Type::Disconnect & p)
 		// but we don't care at that point.
 		// TODO: Should fix this by trying to mark the scanner as unused in the memory and
 		// deleting it from somewhere else.
-		_memory.RemoveScanner(p.conn_id);
+		_memory->RemoveScanner(p.conn_id);
 	}
 }
 
@@ -258,11 +268,11 @@ void App::GattcReadChar(const Gattc::Type::ReadChar & p)
 	// Responses from scanners
 	if ((p.value_len % Core::DeviceDataView::Size) != 0) {
 		if (xSemaphoreTake(_memMutex, BlockTimeInCallback)) {
-			const auto * scanner = _memory.GetScanner(p.conn_id);  // Read
+			const auto * scanner = _memory->GetScanner(p.conn_id);  // Read
 			xSemaphoreGive(_memMutex);
 
 			ESP_LOGW(TAG, "Received incorrect data size from %s (%d %% %d != 0)",
-			         scanner ? ToString(scanner->Info.Bda).c_str() : "UNKNOWN", p.value_len,
+			         scanner ? ToString(scanner->Bda).c_str() : "UNKNOWN", p.value_len,
 			         Core::DeviceDataView::Size);
 		}
 		else {
@@ -275,7 +285,7 @@ void App::GattcReadChar(const Gattc::Type::ReadChar & p)
 	Core::DeviceDataView::Array data(std::span(p.value, p.value_len));
 
 	if (xSemaphoreTake(_memMutex, BlockTimeInCallback)) {
-		_memory.UpdateDistance(p.conn_id, data);  // Write
+		_memory->UpdateDistance(p.conn_id, data);  // Write
 		xSemaphoreGive(_memMutex);
 	}
 	else {
@@ -339,7 +349,7 @@ void App::GattcSearchCmpl(const Gattc::Type::SearchCmpl & p)
 
 	// Scanner info filled, add it and remove the temporary
 	if (xSemaphoreTake(_memMutex, BlockTimeInCallback)) {
-		_memory.AddScanner(*sIt);  // Write
+		_memory->AddScanner(*sIt);  // Write
 		xSemaphoreGive(_memMutex);
 	}
 	else {
@@ -386,7 +396,7 @@ void App::UpdateScannersLoop()
 			continue;
 		}
 
-		const auto advertiseInfo = _memory.GetScannerToAdvertise();  // Read
+		const auto advertiseInfo = _memory->GetScannerToAdvertise();  // Read
 		if (advertiseInfo) {
 			const auto connId = advertiseInfo->ConnId;
 			const auto stateChar = advertiseInfo->Service.StateChar;
@@ -425,14 +435,15 @@ void App::UpdateDeviceDataLoop()
 	for (;;) {
 		// First make a copy of each scanner's connection id and handle
 		if (xSemaphoreTake(_memMutex, portMAX_DELAY)) {
-			const auto & scanners = _memory.GetScanners();  // Read
-			readCharData.resize(scanners.size());
-			for (std::size_t i = 0; i < scanners.size(); i++) {
-				readCharData[i].ConnectionId = scanners[i].Info.ConnId;
-				readCharData[i].DeviceCharHandle = scanners[i].Info.Service.DevicesChar;
-			}
+			readCharData.clear();
+			_memory->VisitScanners([&](const ScannerInfo & info) {
+				readCharData.emplace_back(info.ConnId, info.Service.DevicesChar);
+			});
+			xSemaphoreGive(_memMutex);
 		}
-		xSemaphoreGive(_memMutex);
+		else {
+			ESP_LOGD(TAG, "Mtx take fail (UpdateDeviceDataLoop[0])");
+		}
 
 		// Now read data from each scanner; add a small delay between reads
 		for (const auto & data : readCharData) {
@@ -442,31 +453,17 @@ void App::UpdateDeviceDataLoop()
 		}
 		vTaskDelay(Delay);
 
-		// Update positions
-		std::size_t size = 0;
 		if (xSemaphoreTake(_memMutex, portMAX_DELAY)) {
-			size = _memory.UpdateDevicePositions().size();  // Write
+			// Serialize
+			const std::span<std::uint8_t> rawData = _memory->SerializeOutput();  // Read
 			xSemaphoreGive(_memMutex);
+
+			// and finally update the HTTP server data
+			_httpServer.SetDevicesGetData(
+			    std::span<char>(reinterpret_cast<char *>(rawData.data()), rawData.size()));
 		}
 		else {
 			ESP_LOGD(TAG, "Mtx take fail (UpdateDeviceDataLoop[1])");
-		}
-
-		if (size != 0) {
-			// Small delay in case it took too long
-			vTaskDelay(DelayBetweenReads / 2);
-			if (xSemaphoreTake(_memMutex, portMAX_DELAY)) {
-				// Serialize
-				const std::span<std::uint8_t> rawData = _memory.SerializeOutput();  // Read
-				xSemaphoreGive(_memMutex);
-
-				// and finally update the HTTP server data
-				_httpServer.SetDevicesGetData(
-				    std::span<char>(reinterpret_cast<char *>(rawData.data()), rawData.size()));
-			}
-			else {
-				ESP_LOGD(TAG, "Mtx take fail (UpdateDeviceDataLoop[2])");
-			}
 		}
 		vTaskDelay(DelayBetweenReads / 2);
 	}
@@ -505,9 +502,11 @@ void App::_ScanForScanners()
 
 	std::size_t connected = 4;
 	if (xSemaphoreTake(_memMutex, portMAX_DELAY)) {
-		connected = _memory.GetScanners().size();
+		connected = 0;
+		_memory->VisitScanners([&connected](const ScannerInfo & info) { connected++; });
 		xSemaphoreGive(_memMutex);
 	}
+
 	if (connected >= 4 && InitState) {
 		InitState = false;
 		esp_ble_scan_params_t scanParams{
@@ -547,7 +546,7 @@ void App::_ProcessSystemMessage(HttpApi::Type::SystemMsg::Operation op)
 	case Op::ResetScanners:
 		ESP_LOGI(TAG, "Scanner Reset from HTTP");
 		if (xSemaphoreTake(_memMutex, portMAX_DELAY)) {
-			_memory.ResetScannerPositions();
+			_memory->ResetScannerPositions();
 			xSemaphoreGive(_memMutex);
 		}
 		else {

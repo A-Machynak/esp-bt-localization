@@ -1,6 +1,17 @@
 #include "scanner/device_memory_data.h"
 
+#include <chrono>
 #include <numeric>
+
+namespace
+{
+std::uint32_t UnixTimestamp()
+{
+	return std::chrono::duration_cast<std::chrono::seconds>(
+	           Scanner::Clock::now().time_since_epoch())
+	    .count();
+}
+}  // namespace
 
 namespace Scanner
 {
@@ -10,7 +21,7 @@ DeviceInfo::DeviceInfo(std::span<const std::uint8_t, 6> bda,
                        Core::FlagMask flags,
                        esp_ble_evt_type_t eventType,
                        std::span<const std::uint8_t> data)
-    : _outData(bda, rssi, flags, eventType, data)
+    : _outData(UnixTimestamp(), bda, rssi, flags, eventType, data)
     , _firstUpdate(Clock::now())
     , _lastUpdate(_firstUpdate)
     , _rssi(rssi)

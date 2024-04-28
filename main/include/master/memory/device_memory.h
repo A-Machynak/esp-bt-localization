@@ -4,27 +4,15 @@
 #include "core/utility/mac.h"
 #include "core/utility/uuid.h"
 #include "core/wrapper/device.h"
-#include "master/device_memory_data.h"
 #include "master/master_cfg.h"
+#include "master/memory/device_memory_data.h"
+#include "master/memory/idevice_memory.h"
 
 #include "math/matrix.h"
 
 #include <chrono>
 #include <limits>
-#include <map>
 #include <span>
-
-namespace
-{
-
-/// @brief Dimension count
-constexpr std::size_t Dimensions = 3;
-
-/// @brief Preallocated scanner size.
-/// Adding more scanners might result in reallocation fail and restart.
-constexpr std::size_t MaximumScannersPrealloc = 10;
-
-}  // namespace
 
 namespace Master
 {
@@ -35,7 +23,7 @@ namespace Master
 /// and is expected to be converted to in the end. Floats aren't used before this point yet,
 /// since (according to ESP docs) floating point math is quite a bit slower on ESP.
 /// Converting it to distance this early on would also be very limiting.
-class DeviceMemory
+class DeviceMemory : public IDeviceMemory
 {
 public:
 	/// @brief Constructor
@@ -44,7 +32,7 @@ public:
 
 	/// @brief Add new scanner
 	/// @param scanner scanner information
-	void AddScanner(const ScannerInfo & scanner);
+	void AddScanner(const ScannerInfo & scanner) override;
 
 	/// @brief Update distance information between a scanner and a device/scanner.
 	/// Also used to add new (non-scanner) devices.
@@ -52,30 +40,24 @@ public:
 	/// @param device device/scanner data received from Scanner
 	/// @{
 	void UpdateDistance(const std::uint16_t scannerConnId,
-	                    const Core::DeviceDataView::Array & device);
-	void UpdateDistance(const Mac & scanner, const Core::DeviceDataView::Array & device);
+	                    const Core::DeviceDataView::Array & device) override;
+	void UpdateDistance(const Mac & scanner, const Core::DeviceDataView::Array & device) override;
 	/// @}
 
 	/// @brief Tries to find a scanner, which is missing a distance information in another
 	/// scanner and therefore should start advertising. Returns only a single scanner
 	/// (since we can't update more at the same time).
 	/// @return Scanner information or InvalidScannerIdx, if no scanners are required to advertise
-	const ScannerInfo * GetScannerToAdvertise() const;
+	const ScannerInfo * GetScannerToAdvertise() const override;
 
 	/// @brief Remove scanner
 	/// @param connId connection id which this scanner uses
-	void RemoveScanner(std::uint16_t connId);
+	void RemoveScanner(std::uint16_t connId) override;
 
 	/// @brief Checks whether this device is an already connected scanner
 	/// @param bda address
 	/// @return true if device is a currently connected scanner
 	bool IsConnectedScanner(const Bt::Device & dev) const;
-
-	/// @brief Update and get the scanner positions.
-	/// @return scanner positions or nullptr, if positions cannot be calculated
-	/// (not enough data)
-	const Math::Matrix<float> * UpdateScannerPositions();
-	const std::vector<DeviceMeasurements> & UpdateDevicePositions();
 
 	/// @brief Serializes the output
 	/// @return span; valid until the next call of this method
@@ -87,13 +69,13 @@ public:
 	/// @brief Scanner from connection ID
 	/// @param connId connection ID
 	/// @return scanner or nullptr if not found
-	const ScannerDetail * GetScanner(std::uint16_t connId) const;
+	const ScannerInfo * GetScanner(std::uint16_t connId) const override;
 
-	/// @brief Scanners getter
-	/// @return all scanners
-	const std::vector<ScannerDetail> & GetScanners() const;
+	/// @brief Scanners visitor
+	/// @param fn function to call on each scanner
+	void VisitScanners(const std::function<void(const ScannerInfo &)> & fn) override;
 
-	/// @brief Hard device limit.
+	/// @brief Device limit.
 	static constexpr std::size_t MaximumDevices = 80;
 
 private:
@@ -109,7 +91,7 @@ private:
 	bool _scannerPositionsSet = false;
 
 	/// @brief Used as an initial guess for devices
-	std::array<float, Dimensions> _scannerCenter{0.0};
+	std::array<float, 3> _scannerCenter{0.0};
 
 	/// @brief Connected scanners and devices.
 	/// @{
@@ -151,6 +133,12 @@ private:
 	/// @param rssi distance
 	void _UpdateScanner(ScannerIt sIt1, ScannerIt sIt2, std::int8_t rssi);
 
+	/// @brief Update and get the scanner positions.
+	/// @return scanner positions or nullptr, if positions cannot be calculated
+	/// (not enough data)
+	void _UpdateScannerPositions();
+	void _UpdateDevicePositions();
+
 	/// @brief Remove scanner and measurements related to it
 	/// @param sIt iterator from _scanners
 	void _RemoveScanner(ScannerIt sIt);
@@ -163,9 +151,6 @@ private:
 
 	/// @brief Update center of the scanners.
 	void _UpdateScannerCenter();
-
-	void _SerializeWithPositions();
-	void _SerializeRaw();
 };
 
 }  // namespace Master

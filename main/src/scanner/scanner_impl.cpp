@@ -165,11 +165,9 @@ void App::GattsRead(const Gatts::Type::Read & p)
 	if (p.handle != _appInfo->GattHandles[Handle::Devices]) {
 		return;
 	}
+	// Manually respond to Devices GATT READ - reading is destructive.
 
-	// Attributes are limited to 512 octets. That would limit us to 7 devices.
-	// To get around that, we can just keep shifting an offset and send some other
-	// data for each read request.
-	static std::size_t movingOffset = 0;
+	// Attributes are limited to 512 octets.
 	constexpr std::size_t SizeLimit =
 	    std::min(512u, ((ESP_GATT_MAX_MTU_SIZE - 1) / Core::DeviceDataView::Size)
 	                       * Core::DeviceDataView::Size);
@@ -180,10 +178,10 @@ void App::GattsRead(const Gatts::Type::Read & p)
 
 	if (p.offset != 0) {
 		// Don't update; send the rest of the data
-		if ((movingOffset + p.offset) < _serializeVec.size()) {
+		if (p.offset < _serializeVec.size()) {
 			const std::size_t bToSend = SizeLimit - p.offset;
 			const std::size_t size = std::min(bToSend, _serializeVec.size() - bToSend);
-			std::copy_n(_serializeVec.data() + movingOffset + p.offset, size, rsp.attr_value.value);
+			std::copy_n(_serializeVec.data() + p.offset, size, rsp.attr_value.value);
 			rsp.attr_value.len = size;
 		}  // else no data
 		esp_ble_gatts_send_response(_appInfo->GattIf, p.conn_id, p.trans_id, ESP_GATT_OK, &rsp);
@@ -199,25 +197,11 @@ void App::GattsRead(const Gatts::Type::Read & p)
 		return;
 	}
 
-	if (movingOffset >= _serializeVec.size()) {
-		// Something got deleted since last call
-		movingOffset = 0;
-	}
-
 	// Build a response
 	const std::size_t size = std::min(SizeLimit, _serializeVec.size());
-	std::copy_n(_serializeVec.data() + movingOffset, size, rsp.attr_value.value);
+	std::copy_n(_serializeVec.data(), size, rsp.attr_value.value);
 	rsp.attr_value.len = size;
 	esp_ble_gatts_send_response(_appInfo->GattIf, p.conn_id, p.trans_id, ESP_GATT_OK, &rsp);
-
-	if ((movingOffset + SizeLimit) >= _serializeVec.size()) {
-		// Back to beginning
-		movingOffset = 0;
-	}
-	else {
-		// Only shift enough to still be full
-		movingOffset = std::min(movingOffset + SizeLimit, _serializeVec.size() - SizeLimit);
-	}
 }
 
 void App::GattsWrite(const Gatts::Type::Write & p)
@@ -335,13 +319,5 @@ void App::_UpdateDevicesData()
 		_memory.SerializeData(_serializeVec);
 		xSemaphoreGive(_memMutex);
 	}
-	// if (_serializeVec.size() > 0) {
-	//  Not even going to set the attribute value. Pointless, since we are responding to
-	//  reads/writes manually.
-	//  These methods also do so many copies that it makes my head hurt.
-
-	// esp_ble_gatts_set_attr_value(_appInfo->GattHandles[Handle::Devices],
-	// _serializeVec.size(), _serializeVec.data());
-	//}
 }
 }  // namespace Scanner::Impl

@@ -6,10 +6,11 @@
 #include "core/wrapper/gattc_wrapper.h"
 #include "core/wrapper/interface/gap_ble_if.h"
 #include "core/wrapper/interface/gattc_if.h"
-#include "master/device_memory.h"
+
 #include "master/http/api/post_data.h"
 #include "master/http/server.h"
 #include "master/master_cfg.h"
+#include "master/memory/idevice_memory.h"
 
 #include <optional>
 #include <span>
@@ -28,6 +29,7 @@ class App final
 public:
 	/// @brief Constructor
 	App(const AppConfig & cfg);
+	~App();
 
 	/// @brief Initialize with configuration
 	/// @param config config
@@ -81,7 +83,7 @@ private:
 	/// @}
 
 	/// @brief Stored scanners and devices' data
-	DeviceMemory _memory;
+	IDeviceMemory * _memory;
 	SemaphoreHandle_t _memMutex;
 
 	/// @brief BDA of a scanner that we want to connect to.
