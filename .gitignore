@@ -16,4 +16,5 @@ main/certificates/*.key
 main/certificates/*.pem
 main/certificates/*.crt
 
-python_server/venv
+**/venv
+**/__pycache__
