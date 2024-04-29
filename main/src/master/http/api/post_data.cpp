@@ -37,11 +37,7 @@ DevicesPostDataView::DevicesPostDataView(std::span<const std::uint8_t> data)
 
 PostDataEntry DevicesPostDataView::Next()
 {
-	if (Head >= Data.size()) {
-		return PostDataEntry(std::monostate{});
-	}
-
-	if (Data[Head] > static_cast<std::uint8_t>(Type::ValueType::MacName)) {  // last entry
+	if ((Head + 1) >= Data.size()) {
 		return PostDataEntry(std::monostate{});
 	}
 
@@ -75,6 +71,12 @@ PostDataEntry DevicesPostDataView::Next()
 			return PostDataEntry(p);
 		}
 		break;
+	case Type::ValueType::ForceAdvertise:
+		if (Type::ForceAdvertise::IsValid(tData)) {
+			Head += 1 + decltype(Type::ForceAdvertise::Data)::extent;
+			return PostDataEntry(Type::ForceAdvertise(tData));
+		}
+		break;
 	}
 	return PostDataEntry(std::monostate{});
 }
@@ -104,7 +106,7 @@ RefPathLoss::RefPathLoss(std::span<const std::uint8_t> data)
 
 std::span<const std::uint8_t, 6> RefPathLoss::Mac() const
 {
-	return std::span<const std::uint8_t, 6>(Data.data(), 6);
+	return std::span<const std::uint8_t, 6>(Data.begin(), 6);
 }
 
 std::int8_t RefPathLoss::Value() const
@@ -124,7 +126,7 @@ EnvFactor::EnvFactor(std::span<const std::uint8_t> data)
 
 std::span<const std::uint8_t, 6> EnvFactor::Mac() const
 {
-	return std::span<const std::uint8_t, 6>(Data.data(), 6);
+	return std::span<const std::uint8_t, 6>(Data.begin(), 6);
 }
 
 float EnvFactor::Value() const
@@ -146,7 +148,7 @@ MacName::MacName(std::span<const std::uint8_t> data)
 
 std::span<const std::uint8_t, 6> MacName::Mac() const
 {
-	return std::span<const std::uint8_t, 6>(Data.data(), 6);
+	return std::span<const std::uint8_t, 6>(Data.begin(), 6);
 }
 
 std::span<const char> MacName::Value() const
@@ -163,6 +165,21 @@ std::span<const char> MacName::Value() const
 bool MacName::IsValid(std::span<const std::uint8_t> data)
 {
 	return (data.size() >= 8) && (data[0] != 0);
+}
+
+ForceAdvertise::ForceAdvertise(std::span<const std::uint8_t> data)
+    : Data(data)
+{
+}
+
+std::span<const std::uint8_t, 6> ForceAdvertise::Mac() const
+{
+	return std::span<const std::uint8_t, 6>(Data.begin(), 6);
+}
+
+bool ForceAdvertise::IsValid(std::span<const std::uint8_t> data)
+{
+	return (data.size() >= 6);
 }
 
 }  // namespace Type

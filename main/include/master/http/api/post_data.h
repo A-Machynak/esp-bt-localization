@@ -22,7 +22,8 @@ enum class ValueType : std::uint8_t
 	SystemMsg = 0,
 	RefPathLoss = 1,
 	EnvFactor = 2,
-	MacName = 3
+	MacName = 3,
+	ForceAdvertise = 4
 };
 
 struct SystemMsg
@@ -121,11 +122,35 @@ struct MacName
 	static constexpr std::size_t MinSize = 7;   // 6B MAC + 1B str
 	static constexpr std::size_t MaxSize = 22;  // 6B MAC + 16B str
 };
+
+/// @brief Force a scanner to advertise
+struct ForceAdvertise
+{
+	ForceAdvertise(std::span<const std::uint8_t> data);
+
+	/// @brief Data getters
+	/// @return data
+	/// @{
+	std::span<const std::uint8_t, 6> Mac() const;
+	/// @}
+
+	/// @brief Validity check; expects data without first type byte
+	/// @param data data
+	/// @return is valid
+	static bool IsValid(std::span<const std::uint8_t> data);
+
+	constexpr static std::size_t Size = 6;  // 6B MAC
+	std::span<const std::uint8_t, Size> Data;
+};
 }  // namespace Type
 
 /// @brief POST data underlying types
-using PostDataEntry = std::
-    variant<std::monostate, Type::SystemMsg, Type::RefPathLoss, Type::EnvFactor, Type::MacName>;
+using PostDataEntry = std::variant<std::monostate,
+                                   Type::SystemMsg,
+                                   Type::RefPathLoss,
+                                   Type::EnvFactor,
+                                   Type::MacName,
+                                   Type::ForceAdvertise>;
 
 /// @brief View for accessing devices API POST data:
 /// [Type][Data][Type]...

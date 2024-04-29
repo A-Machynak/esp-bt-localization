@@ -40,7 +40,12 @@ void DeviceMemory::AddDevice(const Bt::Device & device)
 		return;
 	}
 
-	// Device not found yet; try to make some space for it
+	// Device doesn't exist, attempt to associate
+	if (_AssociateDevice(device)) {
+		return;
+	}
+
+	// Couldn't associate, try to make some space for it
 	if (_devData.size() >= _cfg.MemorySizeLimit) {
 		constexpr std::size_t RssiTolerance = 3;
 
@@ -81,12 +86,7 @@ void DeviceMemory::AddDevice(const Bt::Device & device)
 		_devData.erase(min);
 	}
 
-	// Device doesn't exist, attempt to associate
-	if (_AssociateDevice(device)) {
-		return;
-	}
-
-	// Couldn't associate; create new
+	// Found some space; create new
 	// Set flags
 	std::uint8_t flags = 0;
 	if (device.IsBle()) {
@@ -127,8 +127,7 @@ void DeviceMemory::SerializeData(std::vector<std::uint8_t> & out)
 
 	out.clear();
 	out.resize(count * Core::DeviceDataView::Size);
-
-	for (std::size_t i = 0; i < _devData.size(); i++) {
+	for (std::size_t i = 0; i < count; i++) {
 		const std::size_t offset = i * Core::DeviceDataView::Size;
 		std::span<std::uint8_t, Core::DeviceDataView::Size> span(out.begin() + offset,
 		                                                         Core::DeviceDataView::Size);

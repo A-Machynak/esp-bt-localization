@@ -1,5 +1,8 @@
 #include "core/device_data.h"
 
+#include <esp_log.h>
+#include <cstring>
+
 namespace Core
 {
 
@@ -19,8 +22,7 @@ DeviceData::DeviceData(std::uint32_t timestamp,
     : Data({})
     , View(Data)
 {
-	std::copy_n(reinterpret_cast<std::uint8_t *>(&timestamp), sizeof(std::uint32_t),
-	            Data.data() + DeviceDataView::TimepointIdx);
+	std::copy_n((std::uint8_t*)&timestamp, 4, Data.data() + DeviceDataView::TimepointIdx);
 	std::copy_n(mac.data(), mac.size(), Data.data() + DeviceDataView::MacStartIdx);
 	Data[DeviceDataView::RssiIdx] = rssi;
 	Data[DeviceDataView::FlagsIdx] = flags;

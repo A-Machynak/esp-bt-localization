@@ -8,6 +8,14 @@
 #include <span>
 #include <vector>
 
+namespace
+{
+constexpr std::size_t GetSerializedDataSize(std::size_t measurements, std::size_t scanners)
+{
+	return (measurements * (71 + 5 * scanners)) + (scanners * 6) + 6;
+}
+}  // namespace
+
 namespace Master
 {
 
@@ -44,24 +52,46 @@ public:
 	/// @return
 	std::span<std::uint8_t> SerializeOutput() override;
 
-	/// @brief Measurement limit.
-	static constexpr std::size_t MaximumMeasurements = 128;
+	/// @brief Last N measurements saved.
+	static constexpr std::size_t MaximumMeasurements = 64;
+
+	/// @brief Maximum scanners
+	constexpr static std::size_t MaxScanners = 10;
+
+	/// @brief Maximum size of the output data.
+	constexpr static std::size_t MaxSerializedDataSize =
+	    GetSerializedDataSize(MaximumMeasurements, 10);
 
 private:
 	std::vector<std::uint8_t> _serializedData;
 	std::vector<ScannerInfo> _scanners;
 
-	/// @brief
+	/// @brief Device measurements
 	struct NoProcDeviceMeasurements
 	{
-		DeviceInfo Info;                    ///< Device info
-		std::vector<MeasurementData> Data;  ///< Measurements from scanners
+		struct Measurement
+		{
+			std::int8_t Rssi{0};     ///< RSSI
+			TimePoint LastUpdate{};  ///< Last measurement update
+
+			/// @brief Validity check
+			/// @return true - measurement is valid
+			bool IsValid() const { return Rssi != 0; };
+
+			/// @brief Invalidate the measurement
+			void Invalidate() { Rssi = 0; };
+		};
+
+		DeviceInfo Info;                   ///< Device info
+		std::array<Measurement, 10> Data;  ///< Measurements from scanners
+		std::size_t ValidMeasurements{0};  ///< How many measurements are valid
+		TimePoint LastUpdate{};            ///< Last update of last measurement
 	};
 
-	std::vector<NoProcDeviceMeasurements> _measurements;
+	std::array<NoProcDeviceMeasurements, MaximumMeasurements> _measurements;
 
-	using ScannerIt = std::vector<ScannerInfo>::iterator;
-	using MeasurementIt = std::vector<NoProcDeviceMeasurements>::iterator;
+	using ScannerIt = decltype(_scanners)::iterator;
+	using MeasurementIt = decltype(_measurements)::iterator;
 
 	void _UpdateDistance(ScannerIt sIt, const Core::DeviceDataView::Array & devices);
 

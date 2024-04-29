@@ -115,7 +115,7 @@ void App::OnHttpServerUpdate(std::span<const char> data)
 	// Update from http server
 	const std::span span(reinterpret_cast<const std::uint8_t *>(data.data()), data.size());
 	auto view = HttpApi::DevicesPostDataView(span);
-	ESP_LOGI(TAG, "Config update");
+	ESP_LOGI(TAG, "Config update (size %d)", data.size());
 
 	for (auto v = view.Next(); !std::holds_alternative<std::monostate>(v); v = view.Next()) {
 		std::visit(
@@ -130,6 +130,25 @@ void App::OnHttpServerUpdate(std::span<const char> data)
 		        },
 		        [&](const HttpApi::Type::MacName & t) {
 			        Nvs::Cache::Instance().SetMacName(t.Mac(), t.Value());
+		        },
+		        [&](const HttpApi::Type::ForceAdvertise & t) {
+			        ESP_LOGI(TAG, "Force Advertise for %s", ToString(t.Mac()).c_str());
+			        if (xSemaphoreTake(_memMutex, BlockTimeInCallback)) {
+				        _memory->VisitScanners([&, m = Mac(t.Mac())](const ScannerInfo & info) {
+					        if (info.Bda == m) {
+						        ESP_LOGI(TAG, "Switching %s to advertising state",
+						                 ToString(m).c_str());
+						        std::uint8_t val = Gatt::StateChar::Advertise;
+						        esp_ble_gattc_write_char(
+						            _gattcApp->GattIf, info.ConnId, info.Service.StateChar, 1, &val,
+						            ESP_GATT_WRITE_TYPE_RSP, ESP_GATT_AUTH_REQ_NONE);
+					        }
+				        });
+				        xSemaphoreGive(_memMutex);
+			        }
+			        else {
+				        ESP_LOGW(TAG, "Couldn't take memory mtx (force advertise canceled)");
+			        }
 		        },
 		        [&](std::monostate t) {},
 		    },
@@ -279,6 +298,7 @@ void App::GattcReadChar(const Gattc::Type::ReadChar & p)
 			ESP_LOGW(TAG, "Received incorrect data size from scanner conn id %d (%d %% %d != 0)",
 			         p.conn_id, p.value_len, Core::DeviceDataView::Size);
 		}
+		return;
 	}
 
 	// Assume its an array of devices

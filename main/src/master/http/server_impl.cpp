@@ -92,6 +92,8 @@ namespace Master::Impl
 HttpServer::HttpServer(const WifiConfig & cfg)
     : _cfg(cfg)
 {
+	// the largest data should be from NoProcessingMemory - around 7810B.
+	_rawData.reserve(8192);
 }
 
 HttpServer::~HttpServer()

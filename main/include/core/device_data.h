@@ -55,7 +55,7 @@ struct DeviceDataView
 	/// @}
 
 	/// @brief Constructor from raw data
-	/// @param data raw data; takes a maximum of 72 bytes
+	/// @param data raw data
 	DeviceDataView(std::span<std::uint8_t, DeviceDataView::Size> data);
 
 	/// @brief UNIX timestamp (seconds)

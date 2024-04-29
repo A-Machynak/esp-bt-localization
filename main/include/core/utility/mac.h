@@ -14,6 +14,10 @@ struct Mac
 
 	/// @brief Constructor
 	/// @param address MAC
+	Mac();
+
+	/// @brief Constructor
+	/// @param address MAC
 	Mac(std::span<const std::uint8_t, Size> address);
 
 	/// @brief Equality

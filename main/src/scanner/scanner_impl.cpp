@@ -29,6 +29,7 @@ App::App(const AppConfig & cfg)
     , _btGap(this)
     , _memory(_cfg.DeviceMemoryCfg)
 {
+	_serializeVec.reserve(512);
 }
 
 void App::Init()
@@ -175,13 +176,13 @@ void App::GattsRead(const Gatts::Type::Read & p)
 	rsp.attr_value.handle = p.handle;
 	rsp.attr_value.auth_req = ESP_GATT_AUTH_REQ_NONE;
 	rsp.attr_value.offset = p.offset;
-
+ 
 	if (p.offset != 0) {
 		// Don't update; send the rest of the data
 		if (p.offset < _serializeVec.size()) {
 			const std::size_t bToSend = SizeLimit - p.offset;
 			const std::size_t size = std::min(bToSend, _serializeVec.size() - bToSend);
-			std::copy_n(_serializeVec.data() + p.offset, size, rsp.attr_value.value);
+			std::copy(_serializeVec.begin() + p.offset, _serializeVec.begin() + size, rsp.attr_value.value);
 			rsp.attr_value.len = size;
 		}  // else no data
 		esp_ble_gatts_send_response(_appInfo->GattIf, p.conn_id, p.trans_id, ESP_GATT_OK, &rsp);

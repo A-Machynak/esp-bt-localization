@@ -1,14 +1,15 @@
 #include "scanner/device_memory_data.h"
 
+#include <cassert>
 #include <chrono>
 #include <numeric>
 
 namespace
 {
-std::uint32_t UnixTimestamp()
+std::uint32_t UnixTimestamp(Scanner::TimePoint tp)
 {
 	return std::chrono::duration_cast<std::chrono::seconds>(
-	           Scanner::Clock::now().time_since_epoch())
+	           tp.time_since_epoch())
 	    .count();
 }
 }  // namespace
@@ -21,7 +22,7 @@ DeviceInfo::DeviceInfo(std::span<const std::uint8_t, 6> bda,
                        Core::FlagMask flags,
                        esp_ble_evt_type_t eventType,
                        std::span<const std::uint8_t> data)
-    : _outData(UnixTimestamp(), bda, rssi, flags, eventType, data)
+    : _outData(UnixTimestamp(Clock::now()), bda, rssi, flags, eventType, data)
     , _firstUpdate(Clock::now())
     , _lastUpdate(_firstUpdate)
     , _rssi(rssi)
@@ -33,20 +34,20 @@ void DeviceInfo::Update(std::int8_t rssi)
 	_lastUpdate = Clock::now();
 	_rssi.Add(rssi);
 	_outData.View.Rssi() = _rssi.Average();
+	_outData.View.Timestamp() = UnixTimestamp(_lastUpdate);
 }
 
 void DeviceInfo::Update(std::span<const std::uint8_t, 6> bda, std::int8_t rssi)
 {
-	std::copy_n(bda.begin(), bda.size(), _outData.View.Mac().data());
-
-	_lastUpdate = Clock::now();
-	_rssi.Add(rssi);
-	_outData.View.Rssi() = _rssi.Average();
+	assert(bda.size() == _outData.View.Mac().size());
+	std::copy(bda.begin(), bda.end(), _outData.View.Mac().begin());
+	Update(rssi);
 }
 
 void DeviceInfo::Serialize(std::span<std::uint8_t, Core::DeviceDataView::Size> output) const
 {
-	std::copy_n(_outData.Data.data(), _outData.Data.size(), output.data());
+	assert(_outData.Data.size() == output.size());
+	std::copy(_outData.Data.begin(), _outData.Data.end(), output.begin());
 }
 
 const Core::DeviceData & DeviceInfo::GetDeviceData() const

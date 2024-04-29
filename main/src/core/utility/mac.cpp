@@ -3,6 +3,11 @@
 
 #include <algorithm>
 
+Mac::Mac()
+    : Addr({0})
+{
+}
+
 Mac::Mac(std::span<const std::uint8_t, Mac::Size> address)
 {
 	std::copy_n(address.data(), Mac::Size, Addr.begin());
