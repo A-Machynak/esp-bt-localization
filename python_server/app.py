@@ -1,50 +1,136 @@
-import time
-import requests
 import numpy as np
 import pandas as pd
-from datetime import datetime
-from typing import Optional
-
-from data import AdvertisingData, BleEventType, Device, DeviceBase, Mac, MasterData, MeasurementData, Memory
-from utils import log_distance
 
 import dash
 from dash import Dash, html, dcc, Input, Output, State, callback
+from plotly import graph_objects as go
 
-from sklearn.manifold import MDS
+from data import Memory
+from master_comm import get_data, force_advertise
 
-App = None
-Ip = None
+class GlobalData:
+    app: dash.Dash
+    ip: str
+    memory: Memory = Memory()
+
+g_data = GlobalData()
 
 def start(app_name: str, ip: str):
-    global App, Ip
+    global g_data
 
-    Ip = ip
-    #App = dash.Dash(app_name)
-    #App.layout = html.Div([
-    #    dcc.Input(id='in-master-ip', type='text', placeholder='Master IPv4', value=Ip),
-    #    html.Button('Set', id='submit-master-ip', n_clicks=0),
-    #])
-    #App.run(debug=True)
-    update_data_loop()
+    g_data.ip = ip
+    g_data.app = dash.Dash(app_name)
+    g_data.app.layout = html.Div([
+        html.P(id='dummy'),
+        dcc.Tabs(
+            id='tabs', value='live-update-tab', children=[
+                dcc.Tab(label='Live', children=[
+                    html.Div([
+                        dcc.Input(id='in-master-ip', type='text', placeholder='Master IPv4', value=g_data.ip),
+                        html.Button('Set', id='submit-master-ip', n_clicks=0),
+                        dcc.Graph(id='live-scatter3d'),
+                        dcc.Interval(
+                            id='graph-update-interval',
+                            interval=3000 # ms
+                        )
+                    ])
+                ]),
+                dcc.Tab(label='History', children=[
+                    dcc.Graph(id='history-scatter3d')
+                ])
+        ]),
+        dcc.Interval(
+            id='data-update-interval',
+            interval=3000 # ms
+        )
+    ])
+    g_data.app.run(debug=True)
 
-def update_data_loop():
-    mem = Memory()
-    while True:
-        data = get_data()
-        if data:
-            mem.update(data)
+def update_data():
+    global g_data
+    data = get_data(g_data.ip)
+    if not data:
+        return
 
-            # Check advertising
-            sc = mem.get_scanner_to_advertise()
-            if sc:
-                log_info(f"{sc} should advertise")
-                force_advertise(sc)
+    # Insert new data
+    g_data.memory.update(data)
+    # Remove old
+    g_data.memory.remove_old_devices()
+    # Update scanner positions
+    g_data.memory.update_scanner_positions()
+    # Update device positions
+    g_data.memory.update_device_positions()
+    # Check for advertising
+    scanner = g_data.memory.get_scanner_to_advertise()
+    if scanner:
+        force_advertise(g_data.ip, scanner)
+        print(f"{scanner} should advertise")
+    for mac, v in g_data.memory.scanner_dict.items():
+        print(mac, v)
 
-            # MDS
-            mem.update_scanner_positions()
-            print(mem.scanner_positions)
-        time.sleep(5)
+@callback(Output('live-scatter3d', 'figure'), [Input('graph-update-interval', 'n_intervals')])
+def update_live_graph(_):
+    xs,ys,zs = [], [], []
+    data_s = []
+    for mac, sc in g_data.memory.scanner_dict.items():
+        if sc.has_position():
+            xs.append(sc.x)
+            ys.append(sc.y)
+            zs.append(sc.z)
+            data_s.append(f"{mac}")
+    xd,yd,zd = [], [], []
+    data_d = []
+    for mac, dev in g_data.memory.device_dict.items():
+        if dev.has_position():
+            xd.append(dev.x)
+            yd.append(dev.y)
+            zd.append(dev.z)
+            data_d.append(f"{mac}")
+
+    fig = go.Figure()
+    fig.add_scatter3d(
+        x=xs, y=ys, z=zs,
+        mode='markers', marker=dict(
+            size=12, color='rgb(255,0,0)',
+            opacity=0.75
+        ),
+        customdata=data_s,
+        hovertemplate="<b>X</b>: %{x}<br><b>Y</b>: %{y}<br><b>Z</b>: %{z}<br>%{customdata}"
+    )
+    fig.add_scatter3d(
+        x=xd, y=yd, z=zd,
+        mode='markers', marker=dict(
+            size=12, color='rgb(0,255,0)',
+            opacity=0.75
+        ),
+        customdata=data_d,
+        hovertemplate="<b>X</b>: %{x}<br><b>Y</b>: %{y}<br><b>Z</b>: %{z}<br>%{customdata}"
+    )
+    fig.update_layout(
+        autosize=True,
+        width=1280,
+        height=720,
+        scene=dict(
+            xaxis=dict(range=[-15,15]),
+            yaxis=dict(range=[-15,15]),
+            zaxis=dict(range=[-15,15]),
+        )
+    )
+    fig.update_layout(uirevision='constant')
+    return fig
+
+#@callback(Output(''), Input('live-scatter3d, clickData'))
+#def live_graph_click(click_data):
+#    pass
+
+@callback(Output('history-scatter3d', 'figure'), [Input('graph-update-interval', 'n_intervals')])
+def update_history_graph(_):
+    pass
+
+@callback(Output('dummy', 'hidden'), [Input('data-update-interval', 'n_intervals')])
+def get_master_data(_):
+    update_data()
+    return True
 
 @callback(
         Output('in-master-ip', 'value'),
@@ -53,83 +139,6 @@ def update_data_loop():
         prevent_initial_call=True
 )
 def set_ip(n_clicks: int, value: str):
-    global Ip
-    Ip = value
-    log_info(f"Updated ip: '{Ip}'")
-
-def get_data() -> Optional[MasterData]:
-    try:
-        response = requests.get(f"http://{Ip}/api/devices", timeout=3)
-        if response.status_code == 200:
-            return parse_response(response.content)
-        else:
-            log_info(f"status {response.status_code}")
-        return None
-    except Exception as e:
-        log_info(f"Exception during GET ({e})")
-        return None
-
-def force_advertise(mac: Mac):
-    """Force a Scanner to an advertising state"""
-    msg_type = 4
-    data = bytes([ msg_type, *mac.value ])
-    _ = requests.post(f"http://{Ip}/api/config", data=data, timeout=3)
-
-def log_info(msg: str):
-    if App:
-        App.logger.info(msg)
-    else:
-        print(msg)
-
-def parse_response(response_data: bytes) -> MasterData:
-    scanner_list: list[Mac] = []
-    measurement_list: list[MeasurementData] = []
-
-    if len(response_data) < 6:
-        log_info(f"Incorrect response from Master ({response_data})")
-        return MasterData(0, [], [])
-
-    now = datetime.timestamp(datetime.now())
-    # Timestamp from when the data was sent - we can (circa) find the real timestamps of measurements with this
-    ref_timestamp = int.from_bytes(response_data[0:4], byteorder="little")
-    scanner_count = response_data[4]
-    measurement_count = response_data[5]
-
-    try:
-        offset = 6
-        # Scanners
-        for _ in range(0, scanner_count):
-            scanner_list.append(Mac([ int(i) for i in response_data[offset:offset + 6] ]))
-            offset += 6
-
-        # Devices
-        for _ in range(0, measurement_count):
-            # 6B MAC
-            mac = Mac([ int(i) for i in response_data[offset:offset + 6] ])
-            offset += 6
-
-            measurements: list[MeasurementData.Measurement] = []
-            for i in range(0, scanner_count):
-                ts = int.from_bytes(response_data[offset:offset + 4], byteorder="little")
-                real_ts = now - (ref_timestamp - ts)
-                rssi = int(np.int8(response_data[offset + 4]))
-                measurements.append(MeasurementData.Measurement(
-                    real_ts, rssi, scanner_list[i]
-                ))
-                offset += 5
-
-            # 1B Flag, 1B Advertising data length, 1B Event type
-            flags = response_data[offset]
-            offset += 1
-            adv_data_len = response_data[offset]
-            offset += 1
-            event_type =  BleEventType(response_data[offset])
-            offset += 1
-
-            # 62B Advertising data (only [adv_data_len]B are valid)
-            adv_data = AdvertisingData(response_data[offset:offset+adv_data_len])
-            measurement_list.append(MeasurementData(mac, measurements, flags, event_type, adv_data))
-            offset += 62
-    except Exception as e:
-        log_info(f"Exception during parse_response ({e})")
-    return MasterData(now, scanner_list, measurement_list)
+    global g_data
+    g_data.ip = value
+    print(f"Updated ip: '{g_data.ip}'")
