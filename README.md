@@ -8,14 +8,14 @@ This project was developed as part of a bachelor's thesis "Bluetooth Based Local
 
 ### The principle
 
-A "Scanner" is a device, which waits for an incoming `GATT` connection. Upon connecting, it passively scans
+A "`Scanner`" is a device, which waits for an incoming `GATT` connection. Upon connecting, it passively scans
 for devices sending BLE Advertisements and saves their BDA (MAC) and RSSI values. These values can then be read
 by the connected device using `GATT`.
 
-A "Master" device is used as an aggregator of data saved in Scanners, which listens for BLE Advertisements
+A "`Master`" device is used as an aggregator of data saved in Scanners, which listens for BLE Advertisements
 from Scanners, connects to them, reads their BDA and RSSI values and attempts to approximate the devices' positions.
 
-A "Tag" is a device, which keeps sending BLE Advertisements.
+A "`Tag`" is a device, which keeps sending BLE Advertisements.
 
 <hr>
 
@@ -120,16 +120,14 @@ Sending GET request on this endpoint returns an array of elements with 20 bytes 
 
 `GET /api/devices`
 
-| Type/Size[B] | Name          |
-| ------------ | ------------- |
-| uint8/6      | BDA           |
-| float/3      | (x, y, z)     |
-| uint8/1      | Scanner count |
-| uint8/1      | Flags         |
+| Bytes | Name          | Description                                                          |
+| ----- | ------------- | -------------------------------------------------------------------- |
+| 6     | MAC (BDA)     | Device MAC                                                           |
+| 3*4   | (x,y,z)       | Coordinates (as float)                                               |
+| 1     | Scanner count | How many scanner measurements were used to calculate the coordinates |
+| 1     | Flags         | 3 bits for flags (below)                                             |
 
-... assuming `float` is 4 bytes.
-`scannerCount` represents the amount of scanner measurements that were used to approximate this device's position.
-For `flags`, only the first 3 (lowest) bits are used and they represent the following:
+`Flags`
 
 | Bit | Info                                                |
 | --- | --------------------------------------------------- |
@@ -152,12 +150,12 @@ POST requests expect raw bytes in the format `[Type0][Data0][Type1][Data1]...`, 
 | 4    | Force Scanner to advertise | 6B (MAC) - Scanner MAC                |
 
 `System message types`
-| Type | Name            | Data | Description                                                             |
-| ---- | --------------- | ---- | ----------------------------------------------------------------------- |
-| 0    | Restart         | None | Restarts the ESP                                                        |
-| 1    | Reset Scanners  | None | Resets scanner positions                                                |
-| 2    | Switch to AP    | None | Switches WiFi to AP mode (with SSID/password from menuconfig) (Unused)  |
-| 3    | Switch to STA   | None | Switches WiFi to STA mode (with SSID/password from menuconfig) (Unused) |
+| Type | Name            | Description                                                             |
+| ---- | --------------- | ----------------------------------------------------------------------- |
+| 0    | Restart         | Restarts the ESP                                                        |
+| 1    | Reset Scanners  | Resets scanner positions                                                |
+| 2    | Switch to AP    | Switches WiFi to AP mode (with SSID/password from menuconfig) (Unused)  |
+| 3    | Switch to STA   | Switches WiFi to STA mode (with SSID/password from menuconfig) (Unused) |
 
 ### Custom processing and visualization
 
@@ -173,7 +171,32 @@ At that point, the `GET /api/devices` endpoint sends data in the following forma
 | N*size(Scanner) | Array of scanners | Array with `Scanner` types (below)    |
 | M*size(Device)  | Array of devices  | Array with `Device` types (below)     |
 
-TODO (Device/Scanner format)
+`Scanner`
+| Bytes | Name | Description         |
+| ----- | ---- | ------------------- |
+| 6     | MAC  | Scanner MAC address |
+
+`Device`
+| Bytes         | Name            | Description                                                                                    |
+| ------------- | --------------- | ---------------------------------------------------------------------------------------------- |
+| 6             | MAC             | Device MAC address                                 |
+| 5*N(Scanners) | Timestamp+RSSI  | UNIX timestamp (4b) + RSSI (1b) for each mesurement; index corresponds to the scanner array index |
+| 1             | Flag            | BLE (1st bit) + Public address (2nd bit) flags     |
+| 1             | Adv data length | How many bits are valid for the Advertising data   |
+| 1             | Event type      | BLE Event type                                     |
+| 62            | Adv data        | Advertising data with [adv data length] valid bits (for predictable length) |
+
+Folder `python_server` contains an application which pulls data from this endpoint and provides
+a better form of visualization (using the [Dash](https://dash.plotly.com) library) + saves historical data
+for further analysis.
+
+```sh
+cd python_server
+python -m venv venv
+./venv/Scripts/activate
+pip install -r requirements.txt
+python main.py
+```
 
 ### Structure
 - `core/` - wrappers over Bluetooth/WiFi API and data common for both Master and Scanner
