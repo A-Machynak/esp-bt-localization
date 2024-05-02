@@ -1,5 +1,6 @@
 #include "master/memory/device_memory.h"
 
+#include "core/clock.h"
 #include "core/device_data.h"
 #include "master/nvs_utils.h"
 #include "math/minimizer/functions/anchor_distance.h"
@@ -363,7 +364,7 @@ void DeviceMemory::_UpdateDevice(ScannerIt sIt, DeviceIt devIt, std::int8_t rssi
 		// Measurement exists, update
 		meas->Rssi = (meas->Rssi + rssi) / 2;
 
-		const TimePoint now = Clock::now();
+		const Core::TimePoint now = Core::Clock::now();
 		meas->LastUpdate = now;
 	}
 	else {
@@ -393,7 +394,7 @@ void DeviceMemory::_UpdateScanner(ScannerIt sc1, ScannerIt sc2, std::int8_t rssi
 	const std::int8_t refPathLoss = v.RefPathLoss.value_or(_cfg.DefaultPathLoss);
 	const float envFactor = v.EnvFactor.value_or(_cfg.DefaultEnvFactor);
 	const std::int8_t rssiVal = _scannerRssis(sIdx1, sIdx2);
-	const TimePoint now = Clock::now();
+	const Core::TimePoint now = Core::Clock::now();
 
 	_scannerDistances(sIdx1, sIdx2) = PathLoss::LogDistance(rssiVal, envFactor, refPathLoss);
 	sc1->LastUpdate = now;
@@ -446,10 +447,10 @@ void DeviceMemory::_ResetDeviceMeasurements()
 
 void DeviceMemory::_RemoveStaleDevices()
 {
-	const TimePoint now = Clock::now();  // just calculate it once
+	const Core::TimePoint now = Core::Clock::now();  // just calculate it once
 
 	std::erase_if(_devices, [&](const DeviceMeasurements & dev) {
-		return (DeltaMs(dev.LastUpdate, now) > _cfg.DeviceStoreTime);
+		return (Core::DeltaMs(dev.LastUpdate, now) > _cfg.DeviceStoreTime);
 	});
 }
 

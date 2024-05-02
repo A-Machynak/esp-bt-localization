@@ -6,7 +6,6 @@
 #include "core/wrapper/gattc_wrapper.h"
 #include "core/wrapper/interface/gap_ble_if.h"
 #include "core/wrapper/interface/gattc_if.h"
-
 #include "master/http/api/post_data.h"
 #include "master/http/server.h"
 #include "master/master_cfg.h"

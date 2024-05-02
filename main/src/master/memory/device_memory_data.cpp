@@ -5,20 +5,10 @@
 namespace Master
 {
 
-std::int64_t DeltaMs(const TimePoint & before, const TimePoint & after)
-{
-	return std::chrono::duration_cast<std::chrono::milliseconds>(after - before).count();
-}
-
-std::uint32_t ToUnix(const TimePoint & timepoint)
-{
-	return std::chrono::duration_cast<std::chrono::seconds>(timepoint.time_since_epoch()).count();
-}
-
 MeasurementData::MeasurementData(std::size_t scannerIdx, std::int8_t rssi)
     : ScannerIdx(scannerIdx)
     , Rssi(rssi)
-    , LastUpdate(Clock::now())
+    , LastUpdate(Core::Clock::now())
 {
 }
 
@@ -27,14 +17,14 @@ DeviceMeasurements::DeviceMeasurements(const Core::DeviceDataView & data,
     : Info({data.Mac(), data.Flags(), data.AdvDataSize(), data.EventType(), {}})
     , Data({firstMeasurement})
     , Position{InvalidPos, InvalidPos, InvalidPos}
-    , LastUpdate(Clock::now())
+    , LastUpdate(Core::Clock::now())
 {
 	std::copy(data.AdvData().begin(), data.AdvData().end(), Info.AdvData.begin());
 }
 
 ScannerDetail::ScannerDetail(const ScannerInfo & info)
     : Info(info)
-    , LastUpdate(Clock::now())
+    , LastUpdate(Core::Clock::now())
 {
 }
 

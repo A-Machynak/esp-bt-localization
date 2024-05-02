@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/clock.h"
 #include "master/master_cfg.h"
 #include "master/memory/device_memory_data.h"
 #include "master/memory/idevice_memory.h"
@@ -71,8 +72,8 @@ private:
 	{
 		struct Measurement
 		{
-			std::int8_t Rssi{0};     ///< RSSI
-			TimePoint LastUpdate{};  ///< Last measurement update
+			std::int8_t Rssi{0};           ///< RSSI
+			Core::TimePoint LastUpdate{};  ///< Last measurement update
 
 			/// @brief Validity check
 			/// @return true - measurement is valid
@@ -85,7 +86,7 @@ private:
 		DeviceInfo Info;                   ///< Device info
 		std::array<Measurement, 10> Data;  ///< Measurements from scanners
 		std::size_t ValidMeasurements{0};  ///< How many measurements are valid
-		TimePoint LastUpdate{};            ///< Last update of last measurement
+		Core::TimePoint LastUpdate{};      ///< Last update of last measurement
 	};
 
 	std::array<NoProcDeviceMeasurements, MaximumMeasurements> _measurements;

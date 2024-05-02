@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "core/clock.h"
 #include "core/wrapper/gap_ble_wrapper.h"
 #include "core/wrapper/gap_bt_wrapper.h"
 #include "core/wrapper/gatt_attribute_table.h"
@@ -25,7 +26,9 @@ enum Handle : std::size_t
 	StateDecl = 1,
 	State = 2,
 	DevicesDecl = 3,
-	Devices = 4
+	Devices = 4,
+	TimestampDecl = 5,
+	Timestamp = 6
 };
 
 /// @brief Connection status
@@ -73,12 +76,6 @@ public:
 private:
 	AppConfig _cfg;
 
-	/// @brief Chrono typedefs
-	/// @{
-	using Clock = std::chrono::system_clock;
-	using TimePoint = std::chrono::time_point<Clock>;
-	/// @}
-
 	/// @brief GAP/GATTS
 	/// @{
 	Gap::Ble::Wrapper _bleGap;
@@ -114,13 +111,15 @@ private:
 	               Core::DeviceMemoryByteSize(),
 	               ESP_GATT_PERM_READ,
 	               ESP_GATT_RSP_BY_APP)  // Using custom logic
+	        .Declaration(ESP_GATT_CHAR_PROP_BIT_WRITE | ESP_GATT_CHAR_PROP_BIT_READ)
+	        .Value(Gatt::TimestampCharacteristic, 4, 4, ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE)
 	        .Finish());
 
 	/// @brief Connection state
 	ConnectionStatus _connStatus = ConnectionStatus::Disconnected;
 
 	/// @brief Last time the `Devices` GATT attribute was updated
-	TimePoint _lastDevicesUpdate = Clock::now();
+	Core::TimePoint _lastDevicesUpdate = Core::Clock::now();
 
 	/// @brief Changes state - start/stop advertising/scanning
 	/// @param state new state

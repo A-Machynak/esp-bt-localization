@@ -302,7 +302,7 @@ void HttpServer::_InitWifi()
 				                                            _cfg.Sta.EapUsername.size()));
 			}
 			if (_cfg.Sta.EapPassword.size() > 0) {
-				ESP_LOGI(TAG, "Set password: '%s'", (uint8_t *)_cfg.Sta.EapPassword.c_str());
+				ESP_LOGI(TAG, "Set password");
 				ESP_ERROR_CHECK(esp_eap_client_set_password((uint8_t *)_cfg.Sta.EapPassword.c_str(),
 				                                            _cfg.Sta.EapPassword.size()));
 			}

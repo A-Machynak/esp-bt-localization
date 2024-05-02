@@ -144,7 +144,7 @@ std::span<std::uint8_t> NoProcessingMemory::SerializeOutput()
 		for (std::size_t j = 0; j < _scanners.size(); j++) {
 			const auto & dat = m.Data.at(j);
 
-			const auto time = ToUnix(dat.LastUpdate);
+			const auto time = Core::ToUnix(dat.LastUpdate);
 			std::copy_n(reinterpret_cast<const std::uint8_t *>(&time), 4,
 			            _serializedData.data() + offset);
 			_serializedData[offset + 4] = dat.Rssi;
@@ -161,7 +161,7 @@ std::span<std::uint8_t> NoProcessingMemory::SerializeOutput()
 		std::copy(m.Info.AdvData.begin(), m.Info.AdvData.end(), _serializedData.begin() + offset);
 		offset += m.Info.AdvData.size();
 	}
-	const std::uint32_t now = ToUnix(Clock::now());
+	const std::uint32_t now = Core::ToUnix(Core::Clock::now());
 	std::copy_n(reinterpret_cast<const std::uint8_t *>(&now), 4, _serializedData.data());
 	_serializedData.at(4) = _scanners.size();
 	_serializedData.at(5) = serializedMeasurements;
@@ -220,7 +220,7 @@ void NoProcessingMemory::_UpdateDistance(ScannerIt sIt, const Core::DeviceDataVi
 			}
 			it->ValidMeasurements = 1;
 		}
-		const auto now = Clock::now();
+		const auto now = Core::Clock::now();
 		it->Data[sIdx].Rssi = view.Rssi();
 		it->Data[sIdx].LastUpdate = now;
 		it->LastUpdate = now;

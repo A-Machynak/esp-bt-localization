@@ -1,11 +1,11 @@
 #include "master/master_impl.h"
 
 #include "core/bt_common.h"
+#include "core/clock.h"
 #include "core/device_data.h"
 #include "core/gatt_common.h"
 #include "core/utility/common.h"
 #include "core/utility/uuid.h"
-
 #include "master/memory/device_memory.h"
 #include "master/memory/no_processing_memory.h"
 #include "master/nvs_utils.h"
@@ -346,8 +346,9 @@ void App::GattcSearchCmpl(const Gattc::Type::SearchCmpl & p)
 	for (std::uint16_t i = 0; i < count; i++) {
 		if (result[i].uuid.len != 16) {
 			ESP_LOGW(TAG,
-			         "Incorrect characteristic length (%d), incompatible Scanner. Disconnecting...",
-			         result[i].uuid.len);
+			         "Incorrect characteristic length (idx %d, len %d), incompatible Scanner. "
+			         "Disconnecting...",
+			         i, result[i].uuid.len);
 			_gattc.Disconnect(MasterAppId, p.conn_id);
 			return;
 		}
@@ -358,6 +359,9 @@ void App::GattcSearchCmpl(const Gattc::Type::SearchCmpl & p)
 		else if (result[i].uuid == Gatt::DevicesCharacteristicArray) {
 			sIt->Service.DevicesChar = result[i].char_handle;
 		}
+		else if (result[i].uuid == Gatt::TimestampCharacteristicArray) {
+			sIt->Service.TimestampChar = result[i].char_handle;
+		}
 		else {
 			ESP_LOGW(TAG, "Unknown characteristic, incompatible Scanner (%s). Disconnecting...",
 			         ToString(result[i].uuid).c_str());
@@ -366,6 +370,12 @@ void App::GattcSearchCmpl(const Gattc::Type::SearchCmpl & p)
 		}
 	}
 	ESP_LOGI(TAG, "Saved characteristic handles");
+
+	// Set scanner time right away
+	std::uint32_t timestamp = Core::ToUnix(Core::Clock::now());
+	esp_ble_gattc_write_char(_gattcApp->GattIf, p.conn_id, sIt->Service.TimestampChar, 4,
+	                         reinterpret_cast<std::uint8_t *>(&timestamp),
+	                         ESP_GATT_WRITE_TYPE_NO_RSP, ESP_GATT_AUTH_REQ_NONE);
 
 	// Scanner info filled, add it and remove the temporary
 	if (xSemaphoreTake(_memMutex, BlockTimeInCallback)) {

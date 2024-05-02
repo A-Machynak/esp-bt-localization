@@ -2,17 +2,16 @@
 
 #include <algorithm>
 #include <array>
-#include <chrono>
 #include <cstdint>
 #include <optional>
 #include <span>
 
 #include <esp_gap_ble_api.h>
 
+#include "core/clock.h"
+
 namespace Core
 {
-using Clock = std::chrono::system_clock;
-using TimePoint = std::chrono::time_point<Clock>;
 
 /// @brief Maximum amount of devices
 constexpr std::size_t DefaultMaxDevices = 128;

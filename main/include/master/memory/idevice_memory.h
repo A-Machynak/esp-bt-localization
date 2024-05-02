@@ -2,7 +2,6 @@
 
 #include "master/master_cfg.h"
 #include "master/memory/device_memory_data.h"
-
 #include "math/matrix.h"
 
 #include <cstddef>

@@ -1,5 +1,7 @@
 #include "scanner/device_memory.h"
 
+#include "core/clock.h"
+
 #include <algorithm>
 
 #include <esp_log.h>
@@ -142,11 +144,10 @@ void DeviceMemory::SerializeData(std::vector<std::uint8_t> & out)
 void DeviceMemory::RemoveStaleDevices()
 {
 	// Remove devices not updated for `StaleLimit`
-	std::erase_if(_devData, [limit = _cfg.StaleLimit, now = Clock::now()](const DeviceInfo & dev) {
-		return std::chrono::duration_cast<std::chrono::milliseconds>(now - dev.GetLastUpdate())
-		           .count()
-		       > limit;
-	});
+	std::erase_if(_devData,
+	              [limit = _cfg.StaleLimit, now = Core::Clock::now()](const DeviceInfo & dev) {
+		              return Core::DeltaMs(dev.GetLastUpdate(), now) > limit;
+	              });
 }
 
 bool DeviceMemory::_AssociateDevice(const Bt::Device & device)

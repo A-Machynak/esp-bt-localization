@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/clock.h"
 #include "core/device_data.h"
 #include "core/utility/mac.h"
 #include "core/wrapper/device.h"
@@ -7,25 +8,11 @@
 #include <esp_gatt_defs.h>
 
 #include <array>
-#include <chrono>
 #include <cstdint>
 #include <span>
 
 namespace Master
 {
-using Clock = std::chrono::system_clock;
-using TimePoint = std::chrono::time_point<Clock>;
-
-/// @brief Calculates (after - before)
-/// @param before first time point (ex. past)
-/// @param after second time point (ex. now)
-/// @return difference in milliseconds
-std::int64_t DeltaMs(const TimePoint & before, const TimePoint & after = Clock::now());
-
-/// @brief Cast timepoint to unix timestamp (seconds)
-/// @param timepoint timepoint
-/// @return unix timestamp
-std::uint32_t ToUnix(const TimePoint & timepoint);
 
 /// @brief Single scanner
 struct ScannerInfo
@@ -33,10 +20,11 @@ struct ScannerInfo
 	/// @brief Handles for scanner service
 	struct ServiceInfo
 	{
-		std::uint16_t StartHandle{ESP_GATT_INVALID_HANDLE};  ///< Service start handle
-		std::uint16_t EndHandle{ESP_GATT_INVALID_HANDLE};    ///< Service end handle
-		std::uint16_t StateChar{ESP_GATT_INVALID_HANDLE};    ///< State characteristic handle
-		std::uint16_t DevicesChar{ESP_GATT_INVALID_HANDLE};  ///< 'Devices' characteristic handle
+		std::uint16_t StartHandle{ESP_GATT_INVALID_HANDLE};    ///< Service start handle
+		std::uint16_t EndHandle{ESP_GATT_INVALID_HANDLE};      ///< Service end handle
+		std::uint16_t StateChar{ESP_GATT_INVALID_HANDLE};      ///< 'State' char. handle
+		std::uint16_t DevicesChar{ESP_GATT_INVALID_HANDLE};    ///< 'Devices' char. handle
+		std::uint16_t TimestampChar{ESP_GATT_INVALID_HANDLE};  ///< 'Timestamp' char. handle
 	};
 
 	std::uint16_t ConnId;  ///< Connection id
@@ -51,8 +39,8 @@ struct ScannerDetail
 	/// @param info scanner info
 	ScannerDetail(const ScannerInfo & info);
 
-	ScannerInfo Info;      ///< Info
-	TimePoint LastUpdate;  ///< Time of the last update
+	ScannerInfo Info;            ///< Info
+	Core::TimePoint LastUpdate;  ///< Time of the last update
 
 	/// @brief How many other scanners' measurements were used to approximate this
 	/// scanner's position
@@ -67,9 +55,9 @@ struct MeasurementData
 	/// @param rssi RSSI
 	MeasurementData(std::size_t scannerIdx, std::int8_t rssi);
 
-	std::size_t ScannerIdx;  ///< Scanner index which owns this measurement
-	std::int8_t Rssi;        ///< RSSI
-	TimePoint LastUpdate;    ///< Last measurement update
+	std::size_t ScannerIdx;      ///< Scanner index which owns this measurement
+	std::int8_t Rssi;            ///< RSSI
+	Core::TimePoint LastUpdate;  ///< Last measurement update
 };
 
 /// @brief Device info. Similar to `DeviceData`; but without the RSSI
@@ -96,7 +84,7 @@ struct DeviceMeasurements
 	DeviceInfo Info;                    ///< Device info
 	std::vector<MeasurementData> Data;  ///< Measurements from scanners
 	std::array<float, 3> Position;      ///< Resolved position (possibly invalid)
-	TimePoint LastUpdate;               ///< Last time a measurement was received
+	Core::TimePoint LastUpdate;         ///< Last time a measurement was received
 
 	static constexpr float InvalidPos = std::numeric_limits<float>::max();
 	inline bool IsInvalidPos() const { return Position[0] == InvalidPos; }

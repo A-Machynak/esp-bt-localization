@@ -7,6 +7,8 @@
 #include <esp_gatt_common_api.h>
 #include <esp_log.h>
 
+#include <sys/time.h>  // settimeofday
+
 namespace
 {
 
@@ -176,13 +178,14 @@ void App::GattsRead(const Gatts::Type::Read & p)
 	rsp.attr_value.handle = p.handle;
 	rsp.attr_value.auth_req = ESP_GATT_AUTH_REQ_NONE;
 	rsp.attr_value.offset = p.offset;
- 
+
 	if (p.offset != 0) {
 		// Don't update; send the rest of the data
 		if (p.offset < _serializeVec.size()) {
 			const std::size_t bToSend = SizeLimit - p.offset;
 			const std::size_t size = std::min(bToSend, _serializeVec.size() - bToSend);
-			std::copy(_serializeVec.begin() + p.offset, _serializeVec.begin() + size, rsp.attr_value.value);
+			std::copy(_serializeVec.begin() + p.offset, _serializeVec.begin() + size,
+			          rsp.attr_value.value);
 			rsp.attr_value.len = size;
 		}  // else no data
 		esp_ble_gatts_send_response(_appInfo->GattIf, p.conn_id, p.trans_id, ESP_GATT_OK, &rsp);
@@ -217,6 +220,18 @@ void App::GattsWrite(const Gatts::Type::Write & p)
 
 		const auto state = static_cast<Gatt::StateChar>(*value);
 		_ChangeState(state);
+	}
+	else if (p.handle == _appInfo->GattHandles[Handle::Timestamp]) {
+		if (p.len != 4) {
+			ESP_LOGI(TAG, "Invalid timestamp length (%d)", p.len);
+			return;
+		}
+		const std::uint32_t value = *reinterpret_cast<std::uint32_t *>(p.value);
+		ESP_LOGI(TAG, "Setting time to %lu", value);
+
+		timeval tm{};
+		tm.tv_sec = value;
+		settimeofday(&tm, nullptr);
 	}
 }
 
@@ -305,9 +320,8 @@ void App::_ScanForDevices()
 
 void App::_CheckAndUpdateDevicesData()
 {
-	const auto now = Clock::now();
-	const auto diff =
-	    std::chrono::duration_cast<std::chrono::milliseconds>(now - _lastDevicesUpdate).count();
+	const auto now = Core::Clock::now();
+	const auto diff = Core::DeltaMs(_lastDevicesUpdate, now);
 	if (diff > _cfg.DevicesUpdateInterval) {
 		_lastDevicesUpdate = now;
 		_UpdateDevicesData();

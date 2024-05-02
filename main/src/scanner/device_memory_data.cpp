@@ -1,18 +1,6 @@
 #include "scanner/device_memory_data.h"
 
-#include <cassert>
-#include <chrono>
 #include <numeric>
-
-namespace
-{
-std::uint32_t UnixTimestamp(Scanner::TimePoint tp)
-{
-	return std::chrono::duration_cast<std::chrono::seconds>(
-	           tp.time_since_epoch())
-	    .count();
-}
-}  // namespace
 
 namespace Scanner
 {
@@ -22,8 +10,8 @@ DeviceInfo::DeviceInfo(std::span<const std::uint8_t, 6> bda,
                        Core::FlagMask flags,
                        esp_ble_evt_type_t eventType,
                        std::span<const std::uint8_t> data)
-    : _outData(UnixTimestamp(Clock::now()), bda, rssi, flags, eventType, data)
-    , _firstUpdate(Clock::now())
+    : _outData(Core::ToUnix(Core::Clock::now()), bda, rssi, flags, eventType, data)
+    , _firstUpdate(Core::Clock::now())
     , _lastUpdate(_firstUpdate)
     , _rssi(rssi)
 {
@@ -31,10 +19,10 @@ DeviceInfo::DeviceInfo(std::span<const std::uint8_t, 6> bda,
 
 void DeviceInfo::Update(std::int8_t rssi)
 {
-	_lastUpdate = Clock::now();
+	_lastUpdate = Core::Clock::now();
 	_rssi.Add(rssi);
 	_outData.View.Rssi() = _rssi.Average();
-	_outData.View.Timestamp() = UnixTimestamp(_lastUpdate);
+	_outData.View.Timestamp() = Core::ToUnix(_lastUpdate);
 }
 
 void DeviceInfo::Update(std::span<const std::uint8_t, 6> bda, std::int8_t rssi)
@@ -55,7 +43,7 @@ const Core::DeviceData & DeviceInfo::GetDeviceData() const
 	return _outData;
 }
 
-const TimePoint & DeviceInfo::GetLastUpdate() const
+const Core::TimePoint & DeviceInfo::GetLastUpdate() const
 {
 	return _lastUpdate;
 }
