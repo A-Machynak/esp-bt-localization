@@ -7,6 +7,7 @@ import numpy as np
 from algorithm import minimize, log_distance
 from common import BleEventType, Mac
 from master_comm import MasterData, MeasurementData
+from snapshot import Snapshot
 
 @dataclass
 class DeviceBase:
@@ -87,25 +88,6 @@ class Device(DeviceBase):
             return # Can't update
         guess = None if not self.has_position() else [self.x, self.y, self.z]
         self.x, self.y, self.z = minimize(guess, distances, scanner_positions)
-
-@dataclass
-class Snapshot:
-    @dataclass
-    class ScannerData: # (6+3*4)=18B
-        mac: Mac
-        x: float
-        y: float
-        z: float
-    @dataclass
-    class DeviceData: # (6+3*4+62)=80B
-        mac: Mac
-        x: float
-        y: float
-        z: float
-        advertising_data: bytes
-    timestamp: datetime
-    scanners: list[ScannerData]
-    devices: list[DeviceData]
 
 class Memory:
     scanner_dict: dict[Mac, Scanner] = {}
@@ -208,7 +190,7 @@ class Memory:
         for _, dev in self.device_dict.items():
             dev.update_position(self.scanner_dict)
 
-    def remove_old_devices(self, max_since_last_update: float = 60.0):
+    def remove_old_data(self, max_since_last_update: float = 60.0):
         now = datetime.now()
         devices_to_pop = []
         for mac1, dev in self.device_dict.items():
@@ -239,3 +221,13 @@ class Memory:
         if len(self.snapshots) > self.snapshot_limit:
             self.snapshots.pop(0)
         self.snapshots.append(Snapshot(time, scanner_list, device_list))
+
+    def find(self, mac: Mac) -> Optional[Scanner | Device]:
+        """Find a device/scanner based on MAC"""
+        for sc_mac, data in self.scanner_dict.items():
+            if sc_mac == mac:
+                return data
+        for dev_mac, data in self.device_dict.items():
+            if dev_mac == mac:
+                return data
+        return None

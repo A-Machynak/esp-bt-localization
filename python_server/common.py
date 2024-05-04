@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum
+from binascii import unhexlify
+from typing import Self
 
 class AdvertisingDataType(int, Enum):
     def __new__(cls, value: int, label: str):
@@ -77,12 +79,18 @@ class AdvertisingData:
             offset += length
         return records
 
-class BleEventType(Enum):
-    CONN_ADV = 0     # Connectable undirected advertising
-    CONN_DIR_ADV = 1 # Connectable directed advertising
-    DISC_ADV = 2     # Scannable undirected advertising
-    NON_CONN_ADV = 3 # Non connectable undirected advertising
-    SCAN_RSP = 4     # Scan response
+class BleEventType(int, Enum):
+    def __new__(cls, value: int, label: str):
+        obj = int.__new__(cls, value)
+        obj._value_ = value
+        obj.label = label
+        return obj
+
+    CONN_ADV = (0, "Connectable undirected advertising")
+    CONN_DIR_ADV = (1, "Connectable directed advertising")
+    DISC_ADV = (2, "Scannable undirected advertising")
+    NON_CONN_ADV = (3, "Non connectable undirected advertising")
+    SCAN_RSP = (4, "Scan response")
 
 @dataclass
 class Mac:
@@ -91,5 +99,9 @@ class Mac:
     def __hash__(self) -> int:
         return hash(tuple(self.value))
     def __str__(self) -> str:
-        return ':'.join([hex(a)[2:] for a in self.value])
+        return ':'.join([format(a, '02x') for a in self.value])
 
+    @staticmethod
+    def from_str(s: str) -> Self:
+        bs = unhexlify(s.replace(':', ''))
+        return Mac([int(b) for b in bs])
