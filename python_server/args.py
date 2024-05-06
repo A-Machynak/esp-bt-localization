@@ -16,4 +16,7 @@ def parse_args():
     parser.add_argument("--history_len",
                         default=10240, type=int,
                         help="How many snapshots (created every 3 seconds) to save before exporting them.")
+    parser.add_argument("--min_distances",
+                        default=3, type=int,
+                        help="Minimum amount of scanner measurements to calculate a device's position.")
     return parser.parse_args()

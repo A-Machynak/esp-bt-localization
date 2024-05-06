@@ -27,6 +27,8 @@ def gradient(scanners_pos: list[list[float]], distances: list[float], guess: lis
         dz = guess[2] - scanners_pos[i][2]
 
         rn = math.sqrt(dx**2 + dy**2 + dz**2)
+        if rn == 0.0:
+            continue
         lhs = 2 * (rn - distances[i])
         grad[0] += lhs * (dx / rn)
         grad[1] += lhs * (dy / rn)

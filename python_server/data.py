@@ -86,16 +86,27 @@ class Device(DeviceBase):
         self.advertising_data = advertising_data
 
     def update_position(self, scanners: dict[Mac, Scanner], min_distances: int = 3):
+        # RSSI to use for scanners that didn't find this device (if min_distances != len(scanners))
+        OUT_OF_RANGE_RSSI = -100
+
         scanner_positions = []
         distances = []
+        residual_scanners = []
+        residual_distances = []
         # Find scanners and distances
         for mac, v in self.data.items():
-            if v.is_valid() and scanners[mac].is_active and scanners[mac].has_position():
-                distances.append(log_distance(v.rssi, self.env_factor, self.ref_path_loss))
-                scanner_positions.append([scanners[mac].x, scanners[mac].y, scanners[mac].z])
-
+            if scanners[mac].has_position():
+                if v.is_valid():
+                    distances.append(log_distance(v.rssi, self.env_factor, self.ref_path_loss))
+                    scanner_positions.append([scanners[mac].x, scanners[mac].y, scanners[mac].z])
+                else:
+                    residual_distances.append(log_distance(OUT_OF_RANGE_RSSI, self.env_factor, self.ref_path_loss))
+                    residual_scanners.append([scanners[mac].x, scanners[mac].y, scanners[mac].z])
         if len(distances) < min_distances:
-            return # Can't update
+            return
+        # We can update, but we might be missing some positions. Add the rest of them.
+        scanner_positions += residual_scanners
+        distances += residual_distances
         guess = None if not self.has_position() else [self.x, self.y, self.z]
         self.x, self.y, self.z = minimize(guess, distances, scanner_positions)
 
@@ -106,8 +117,9 @@ class Memory:
     snapshots: list[Snapshot] = []
     snapshot_limit: int = 16384
     last_idx: int = 0
-    recalculate_scanners: bool = True
+    recalculate_scanners: bool = False
     use_2d: bool = False # Set Z to 0.0 for scanners' MDS
+    min_distances: int = 4
 
     def update(self, new_data: MasterData):
         # Early check. This should fail most of the time
@@ -155,17 +167,24 @@ class Memory:
         return to_advertise[random.randint(0, len(to_advertise) - 1)]
 
     def _scanner_dist_matrix(self):
-        mat = np.full((self.last_idx, self.last_idx), 1e-9)
+        # Use some large RSSI for unknown distances
+        OUT_OF_RANGE_RSSI = -100
+
+        mat = np.zeros((self.last_idx, self.last_idx))
         for mac1, scanner in self.scanner_dict.items():
             for mac2, dat in scanner.data.items():
                 if dat.is_valid():
-                    i1 = self.scanner_indices[mac1]
-                    i2 = self.scanner_indices[mac2]
-                    dist = log_distance(dat.rssi, self.scanner_dict[mac2].env_factor, self.scanner_dict[mac2].ref_path_loss)
-                    mat[i1, i2] = dist
-        for i in range(0, self.last_idx):
-            for j in range(i + 1, self.last_idx):
-                mat[i, j] = mat[j, i] = ((mat[i,j] + mat[j,i]) / 2.0)
+                    rssi = dat.rssi
+                else:
+                    rssi = OUT_OF_RANGE_RSSI # Either really far away or didn't find it yet
+                i1 = self.scanner_indices[mac1]
+                i2 = self.scanner_indices[mac2]
+                dist = log_distance(rssi, self.scanner_dict[mac2].env_factor, self.scanner_dict[mac2].ref_path_loss)
+                mat[i1, i2] = dist
+                if mat[i2, i1] == 0.0:
+                    mat[i2, i1] = dist
+                else:
+                    mat[i1, i2] = mat[i2, i1] = ((mat[i1,i2] + mat[i2,i1]) / 2.0)
         return mat
 
     def reset_scanner_positions(self):
@@ -185,6 +204,8 @@ class Memory:
         self.recalculate_scanners = False
 
         dist_mat = self._scanner_dist_matrix()
+        if np.all(dist_mat == 0):
+            return
         positions = np.zeros(shape=(len(self.scanner_dict), 3))
         no_pos = True
         for mac, sc in self.scanner_dict.items():
@@ -243,7 +264,7 @@ class Memory:
 
     def update_device_positions(self):
         for _, dev in self.device_dict.items():
-            dev.update_position(self.scanner_dict)
+            dev.update_position(self.scanner_dict, self.min_distances)
 
     def remove_old_data(self, max_since_last_update: float = 60.0):
         now = datetime.now()

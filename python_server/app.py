@@ -26,12 +26,13 @@ class GlobalData:
 
 g_data = GlobalData()
 
-def start(app_name: str, ip: str, output_dir: str, data_dir: str, snapshot_limit: int):
+def start(app_name: str, ip: str, output_dir: str, data_dir: str, snapshot_limit: int, min_distances: int):
     print(f"app: {app_name}, ip: {ip}, out: '{output_dir}', data: '{data_dir}', len: {snapshot_limit}")
     global g_data
 
     g_data.ip = ip
     g_data.memory.snapshot_limit = snapshot_limit
+    g_data.memory.min_distances = min_distances
     g_data.output_dir = output_dir
     g_data.data_dir = data_dir
     g_data.config_data = load_config_data(data_dir)
