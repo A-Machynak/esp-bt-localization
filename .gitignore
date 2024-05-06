@@ -18,3 +18,4 @@ main/certificates/*.crt
 
 **/venv
 **/__pycache__
+python_server/data

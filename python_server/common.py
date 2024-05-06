@@ -2,6 +2,16 @@ from dataclasses import dataclass
 from enum import Enum
 from binascii import unhexlify
 from typing import Self
+import re
+
+class AdvertisingDataFlag(Enum):
+    LE_LIMITED_DISC_MODE = 0x01
+    LE_GENERAL_DISC_MODE = 0x02
+    BR_EDR_NOT_SUPPORTED = 0x04
+    LE_BR_EDR_CONTROLLER = 0x08
+    LE_BR_EDR_HOST = 0x10
+    LE_ONLY_LIMITED_DISC_MODE = LE_LIMITED_DISC_MODE | BR_EDR_NOT_SUPPORTED
+    LE_ONLY_GENERAL_DISC_MODE = LE_GENERAL_DISC_MODE | BR_EDR_NOT_SUPPORTED
 
 class AdvertisingDataType(int, Enum):
     def __new__(cls, value: int, label: str):
@@ -45,12 +55,38 @@ class AdvertisingDataType(int, Enum):
     TRANS_DISC_DATA = (0x26, "Transport Discovery Data")
     LE_SUPPORT_FEATURE = (0x27, "LE Supported Features")
     TYPE_CHAN_MAP_UPDATE = (0x28, "Channel Map Update Indication")
+    PB_ADV = (0x29, "PB-ADV")
+    MESH_MESSAGE = (0x2A, "Mesh Message")
+    MESH_BEACON = (0x2B, "Mesh Beacon")
+    BIGINFO = (0x2C, "BIGInfo")
+    BROADCAST_CODE = (0x2D, "Broadcast Code")
+    RESOLVABLE_SET_ID = (0x2E, "Resolvable Set Identifier")
+    ADVERTISING_INT_LONG = (0x2F, "Advertising Interval - Long")
+    BROADCAST_NAME = (0x30, "Broadcast Name")
+    ENCRYPTED_ADV_DATA = (0x31, "Encrypted Advertising Data")
+    PERIOD_ADV_RESP_TIMING = (0x32, "Periodic Advertising Response Timing Information")
+    ELECTR_SHELF_LABEL = (0x34, "Electronic Shelf Label")
+    INFO_3D = (0x3D, "3D Information Data")
     MANUFACTURER_SPECIFIC_TYPE = (0xFF, "Manufacturer Specific Data")
+
+class UnknownAdvertisingDataType:
+    value: int
+    label: str = "Unknown"
+
+    def __init__(self, value: int) -> None:
+        self.value = value
 
 @dataclass
 class AdvertisingDataRecord:
     type: AdvertisingDataType
     data: bytes
+
+    def __str__(self) -> str:
+        if self.type == AdvertisingDataType.FLAG:
+            return f"{str(self.type)}: {AdvertisingDataFlag(self.data)}"
+        elif self.type == AdvertisingDataType.TX_PWR:
+            return f"{str(self.type)}: {int(self.data)}"
+        return f"({str(self.type)}: {str(self.data)})"
 
 @dataclass
 class AdvertisingData:
@@ -72,10 +108,12 @@ class AdvertisingData:
 
             # 1 - Type
             # <2,N-1> - Data
-            records.append(AdvertisingDataRecord(
-                AdvertisingDataType(data[offset]),
-                data[offset+1:offset+length]
-            ))
+            if int(data[offset]) in [i.value for i in AdvertisingDataType]:
+                t = AdvertisingDataType(data[offset])
+            else:
+                t = UnknownAdvertisingDataType(data[offset])
+            records.append(AdvertisingDataRecord(t, data[offset+1:offset+length]))
+
             offset += length
         return records
 
@@ -92,14 +130,25 @@ class BleEventType(int, Enum):
     NON_CONN_ADV = (3, "Non connectable undirected advertising")
     SCAN_RSP = (4, "Scan response")
 
+MAC_REGEX = re.compile(r'(?:[0-9a-fA-F]:?){12}')
 @dataclass
 class Mac:
     value: list[int]
+
+    def __eq__(self, value: object) -> bool:
+        if isinstance(value, self.__class__):
+            return self.value == value.value
+        else:
+            return False
 
     def __hash__(self) -> int:
         return hash(tuple(self.value))
     def __str__(self) -> str:
         return ':'.join([format(a, '02x') for a in self.value])
+
+    @staticmethod
+    def is_valid(s: str) -> bool:
+        return re.match(MAC_REGEX, s) is not None
 
     @staticmethod
     def from_str(s: str) -> Self:

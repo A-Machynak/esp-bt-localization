@@ -1,10 +1,13 @@
 from typing import Optional
 from dataclasses import dataclass, field
 from datetime import datetime
+import random
 
 import numpy as np
+from sklearn.manifold import MDS
+from sklearn.linear_model import LinearRegression
 
-from algorithm import minimize, log_distance
+from algorithm import minimize, log_distance, DEFAULT_ENV_FACTOR, DEFAULT_REF_PATH_LOSS
 from common import BleEventType, Mac
 from master_comm import MasterData, MeasurementData
 from snapshot import Snapshot
@@ -26,6 +29,8 @@ class DeviceBase:
     y: float | None = None
     z: float | None = None
     data: dict[Mac, Data] = field(default_factory=dict)
+    env_factor: float = DEFAULT_ENV_FACTOR
+    ref_path_loss: int = DEFAULT_REF_PATH_LOSS
 
     def __init__(self, mac: Mac, measurements: list[MeasurementData.Measurement]):
         self.mac = mac
@@ -35,6 +40,11 @@ class DeviceBase:
 
     def has_position(self) -> bool:
         return not ((self.x is None) and (self.y is None) and (self.z is None))
+
+    def invalidate_position(self):
+        self.x = None
+        self.y = None
+        self.z = None
 
     def update(self, measurements: list[MeasurementData.Measurement]):
         for m in measurements:
@@ -81,7 +91,7 @@ class Device(DeviceBase):
         # Find scanners and distances
         for mac, v in self.data.items():
             if v.is_valid() and scanners[mac].is_active and scanners[mac].has_position():
-                distances.append(log_distance(v.rssi))
+                distances.append(log_distance(v.rssi, self.env_factor, self.ref_path_loss))
                 scanner_positions.append([scanners[mac].x, scanners[mac].y, scanners[mac].z])
 
         if len(distances) < min_distances:
@@ -94,8 +104,10 @@ class Memory:
     scanner_indices: dict[Mac, int] = {}
     device_dict: dict[Mac, Device] = {}
     snapshots: list[Snapshot] = []
-    snapshot_limit: int = 10240 # Should be around 1MB
+    snapshot_limit: int = 16384
     last_idx: int = 0
+    recalculate_scanners: bool = True
+    use_2d: bool = False # Set Z to 0.0 for scanners' MDS
 
     def update(self, new_data: MasterData):
         # Early check. This should fail most of the time
@@ -117,13 +129,14 @@ class Memory:
         # Update all RSSI
         for meas in new_data.measurements:
             if meas.mac in self.scanner_dict:
+                self.recalculate_scanners = True
                 self.scanner_dict[meas.mac].update(meas.measurements)
             elif meas.mac in self.device_dict:
                 self.device_dict[meas.mac].update(meas.measurements)
             else:
                 # New device
-                self.device_dict[meas.mac] = Device(meas.mac, meas.measurements, meas.flags & 0b1,
-                                                    meas.flags & 0b10, meas.event_type, meas.adv_data)
+                self.device_dict[meas.mac] = Device(meas.mac, meas.measurements, (meas.flags & 0b1) == 0b1,
+                                                    (meas.flags & 0b10) == 0b10, meas.event_type, meas.adv_data)
 
     def _scanners_changed_check(self, new_data: MasterData) -> bool:
         for sc in new_data.scanners:
@@ -132,52 +145,94 @@ class Memory:
         return False
 
     def get_scanner_to_advertise(self) -> Optional[Mac]:
+        to_advertise = []
         for mac1, scanner1 in self.scanner_dict.items():
             for mac2, scanner2 in self.scanner_dict.items():
                 if (mac1 != mac2) and ((mac2 not in scanner1.data) or (not scanner1.data[mac2].is_valid())):
-                    return mac1
-        return None
+                    to_advertise.append(mac1)
+        if len(to_advertise) == 0:
+            return None
+        return to_advertise[random.randint(0, len(to_advertise) - 1)]
 
-    def _scanner_rssi_matrix(self):
-        mat = np.zeros(shape=(self.last_idx, self.last_idx))
+    def _scanner_dist_matrix(self):
+        mat = np.full((self.last_idx, self.last_idx), 1e-9)
         for mac1, scanner in self.scanner_dict.items():
             for mac2, dat in scanner.data.items():
                 if dat.is_valid():
                     i1 = self.scanner_indices[mac1]
                     i2 = self.scanner_indices[mac2]
-                    if mat[i1, i2] == 0:
-                        mat[i1, i2] = dat.rssi
-                    else:
-                        mat[i1, i2] = (mat[i1, i2] + dat.rssi) / 2
-                    # Make it symmetric
-                    mat[i2, i1] = mat[i1, i2]
+                    dist = log_distance(dat.rssi, self.scanner_dict[mac2].env_factor, self.scanner_dict[mac2].ref_path_loss)
+                    mat[i1, i2] = dist
+        for i in range(0, self.last_idx):
+            for j in range(i + 1, self.last_idx):
+                mat[i, j] = mat[j, i] = ((mat[i,j] + mat[j,i]) / 2.0)
         return mat
 
-    def update_scanner_positions(self):
-        from sklearn.manifold import MDS
-        mat = self._scanner_rssi_matrix()
+    def reset_scanner_positions(self):
+        for mac, sc in self.scanner_dict.items():
+            sc.invalidate_position()
+            self.recalculate_scanners = True
 
-        # Convert to distance matrix
-        dist_mat = np.vectorize(lambda x: log_distance(x))(mat)
-        
+    def reset_scanner_distances(self):
+        for mac, sc in self.scanner_dict.items():
+            sc.invalidate_position()
+            sc.data.clear()
+            self.recalculate_scanners = True
+
+    def update_scanner_positions(self):
+        if not self.recalculate_scanners:
+            return
+        self.recalculate_scanners = False
+
+        dist_mat = self._scanner_dist_matrix()
         positions = np.zeros(shape=(len(self.scanner_dict), 3))
         no_pos = True
         for mac, sc in self.scanner_dict.items():
+            idx = self.scanner_indices[mac]
             if sc.has_position():
                 no_pos = False
-                idx = self.scanner_indices[mac]
                 positions[idx][0] = sc.x
                 positions[idx][1] = sc.y
-                positions[idx][2] = sc.z
+                positions[idx][2] = 0.0 if self.use_2d else sc.z
+            elif self.use_2d:
+                # Set to random manually
+                positions[idx][0] = random.random() * 2.0 - 2.0
+                positions[idx][1] = random.random() * 2.0 - 2.0
+                positions[idx][2] = 0.0
 
         n_init = 1
-        if no_pos:
+        if no_pos and not self.use_2d:
+            # Let MDS generate random positions
             n_init = 4
             positions = None
         # MDS
         embedding = MDS(n_components=3, normalized_stress='auto', dissimilarity='precomputed', n_init=n_init)
         positions = embedding.fit_transform(dist_mat, init=positions)
+        """
+        # The scanners are usually around the same height. Output positions are quite off though.
+        # We can find the regression plane between these points, get the rotation matrix which would rotate
+        # it towards its normal and rotate the points using it.
+        X = positions[:, :2]
+        y = positions[:, 2]
+        model = LinearRegression()
+        model.fit(X, y)
 
+        # z = ax + by + c
+        a, b = model.coef_
+        #c = model.intercept_
+        normal = np.array([a, b, -1.0])
+        normal /= np.linalg.norm(normal)
+        up = np.array([0,0,1]) # 'up' vector
+
+        from scipy.spatial.transform import Rotation
+
+        ax = np.cross(normal, up)
+        angle = np.arccos(np.dot(normal, up))
+        R = Rotation.from_rotvec(angle * ax).as_matrix()
+        print(f'before:\n{positions}\nafter:\n{np.dot(R, positions.T).T}')
+        positions = np.dot(R, positions.T).T
+        # This sucks
+        """
         # Update
         for i in range(0, len(positions)):
             for mac, idx in self.scanner_indices.items():
@@ -216,7 +271,9 @@ class Memory:
 
         for mac, device in self.device_dict.items():
             if device.has_position():
-                device_list.append(Snapshot.DeviceData(device.mac, device.x, device.y, device.z, device.advertising_data))
+                device_list.append(Snapshot.DeviceData(device.mac, device.x, device.y, device.z,
+                                                       device.is_ble, device.is_public_addr, device.event_type,
+                                                       device.advertising_data))
 
         if len(self.snapshots) > self.snapshot_limit:
             self.snapshots.pop(0)

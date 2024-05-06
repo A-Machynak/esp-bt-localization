@@ -1,7 +1,10 @@
 
 import math
 
-def log_distance(rssi: int, env_factor: float = 4.0, ref_path_loss: int = 45) -> float:
+DEFAULT_REF_PATH_LOSS = 45
+DEFAULT_ENV_FACTOR: float = 4.0
+
+def log_distance(rssi: int, env_factor: float = DEFAULT_ENV_FACTOR, ref_path_loss: int = DEFAULT_REF_PATH_LOSS) -> float:
     return 10**((-rssi - ref_path_loss) / (10 * env_factor))
 
 def objective_function(scanners_pos: list[list[float]], distances: list[float], guess: list[float]):
