@@ -198,6 +198,8 @@ pip install -r requirements.txt
 python main.py
 ```
 
+![g](https://github.com/A-Machynak/esp-bt-localization/assets/99248176/b5cfde4f-1771-429b-b9bf-5d4d0c6f64f0)
+
 ### Structure
 - `core/` - wrappers over Bluetooth/WiFi API and data common for both Master and Scanner
 - `math/` - functions related to minimization (with gradient descent), loss functions to calculate Scanner/device positions and Log Distance Path-Loss model
